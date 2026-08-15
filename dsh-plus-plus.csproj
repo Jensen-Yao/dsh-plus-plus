@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>dsh-plus-plus</AssemblyName>
+    <RootNamespace>DshControl</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <Version>2.0.0</Version>
+    <Description>dsh++ — DeepSeek Harness 桌面控制台（dsh-plugin）</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <ApplicationIcon>dsh-control.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="icon-gen\**" />
+    <EmbeddedResource Remove="icon-gen\**" />
+    <None Remove="icon-gen\**" />
+    <Content Remove="icon-gen\**" />
+    <Resource Include="dsh-control.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="compat-polyfill.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

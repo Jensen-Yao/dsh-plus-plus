@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh++ — DeepSeek Harness 桌面控制台</title>
+<style>
+  :root {
+    --bg: #1c1c1e; --bg2: #161617; --surface: #2c2c2e;
+    --text: #f5f5f7; --text2: #a1a1a6; --text3: #6c6c70;
+    --primary: #0a84ff; --primary-hover: #2a98ff;
+    --green: #30d158; --border: #3a3a3d; --hero-bg: #1e2f45; --hero-border: #34547a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  header {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 18px 0;
+  }
+  header .wrap { display: flex; align-items: center; gap: 14px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px; background: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 20px; color: #fff; flex: none;
+  }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header .sub { font-size: 13px; color: var(--text2); margin-top: 1px; }
+  header .gh { margin-left: auto; }
+  header .gh a {
+    color: var(--text2); text-decoration: none; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px;
+  }
+  header .gh a:hover { color: var(--primary); border-color: var(--primary); }
+  .hero { padding: 64px 0 40px; text-align: center; }
+  .hero h2 { font-size: 40px; font-weight: 800; letter-spacing: .5px; }
+  .hero h2 span { color: var(--primary); }
+  .hero p { color: var(--text2); font-size: 17px; max-width: 680px; margin: 14px auto 0; }
+  .hero .tags { margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .hero .tags span {
+    font-size: 12.5px; color: var(--text2);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 14px;
+  }
+  .cta { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .cta a {
+    text-decoration: none; font-size: 15px; border-radius: 10px; padding: 11px 26px; font-weight: 600;
+  }
+  .cta .primary { background: var(--primary); color: #fff; }
+  .cta .primary:hover { background: var(--primary-hover); }
+  .cta .ghost { color: var(--text2); border: 1px solid var(--border); }
+  .cta .ghost:hover { color: var(--text); border-color: var(--text3); }
+  .shots { padding: 30px 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .shots figure {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+  }
+  .shots img { width: 100%; display: block; }
+  .shots figcaption { font-size: 13px; color: var(--text2); text-align: center; padding: 10px; }
+  @media (max-width: 860px) { .shots { grid-template-columns: 1fr; } }
+  section { padding: 44px 0; }
+  section h3 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  section .lead { color: var(--text2); margin-bottom: 26px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px;
+  }
+  .card .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); display: inline-block; margin-right: 8px; }
+  .card h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .card p { font-size: 14px; color: var(--text2); }
+  .steps { counter-reset: step; display: grid; gap: 14px; max-width: 720px; }
+  .step {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 20px; display: flex; gap: 16px; align-items: flex-start;
+  }
+  .step .n {
+    counter-increment: step; width: 30px; height: 30px; flex: none;
+    background: var(--hero-bg); border: 1px solid var(--hero-border); color: var(--primary);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+  .step .n::before { content: counter(step); }
+  .step b { display: block; margin-bottom: 2px; }
+  .step span { color: var(--text2); font-size: 14px; }
+  pre {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 13.5px;
+    font-family: "Cascadia Code", Consolas, monospace; color: #7dd3fc;
+  }
+  code.inline {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1px 7px; font-family: Consolas, monospace; font-size: 13px; color: #7dd3fc;
+  }
+  footer {
+    margin-top: 30px; border-top: 1px solid var(--border);
+    padding: 26px 0; color: var(--text3); font-size: 13px; text-align: center;
+  }
+  footer a { color: var(--text2); text-decoration: none; }
+  footer a:hover { color: var(--primary); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">++</div>
+    <div>
+      <h1>dsh++</h1>
+      <div class="sub">DeepSeek Harness 桌面控制台 · dsh-plugin</div>
+    </div>
+    <div class="gh"><a href="https://github.com/Jensen-Yao/dsh-plus-plus">GitHub 仓库</a></div>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <h2>让手机打开<span>和电脑一样</span>的界面</h2>
+    <p>把 <code class="inline">dsh web</code> 从命令行搬进一个漂亮的桌面应用——一键启停、手机地址、Tailscale、防火墙、存储位置，全部集中管理；手机随时连上同一个会话，思考过程完全同步。</p>
+    <div class="tags">
+      <span>Windows 10/11</span><span>.NET 8 · WPF</span><span>深浅双主题</span>
+      <span>Tailscale</span><span>手机远程</span><span>免扫码</span><span>MIT</span>
+    </div>
+    <div class="cta">
+      <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载最新版</a>
+      <a class="ghost" href="https://github.com/Jensen-Yao/dsh-plus-plus#readme">查看 README</a>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="shots">
+    <figure>
+      <img src="screenshots/main-dark.png" alt="dsh++ 深色主题" />
+      <figcaption>深色主题</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/main-light.png" alt="dsh++ 浅色主题" />
+      <figcaption>浅色主题</figcaption>
+    </figure>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h3>功能</h3>
+    <p class="lead">一个窗口，管好 dsh 的全部日常操作</p>
+    <div class="grid">
+      <div class="card"><h4><span class="dot"></span>一键启停</h4><p>启动 / 停止 dsh web，实时显示运行状态与对外绑定（0.0.0.0 全网卡 或 127.0.0.1 仅本机）。</p></div>
+      <div class="card"><h4><span class="dot"></span>手机入口</h4><p>同一 Wi-Fi / 自定义域名 / Tailscale 三种方式，大字地址一键复制，附「缺什么点什么」检查清单。</p></div>
+      <div class="card"><h4><span class="dot"></span>Tailscale 集成</h4><p>登录 / 连接 / 断开 / 安装一体化，跨网络也完全实时，状态与 ts.net 域名实时显示。</p></div>
+      <div class="card"><h4><span class="dot"></span>存储位置管理</h4><p>settings / sessions / storages / profiles / skills / agent-presets 一页看清；技能与 MCP 位置一键直达，主目录可直接修改。</p></div>
+      <div class="card"><h4><span class="dot"></span>免扫码直连</h4><p>一键关闭手机远程插件的配对门禁，手机打开地址即可使用。</p></div>
+      <div class="card"><h4><span class="dot"></span>兼容补丁自愈</h4><p>自动为网页入口注入 polyfill，旧手机浏览器也能用；npm 更新覆盖后自动重新注入。</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h3>三步上手</h3>
+    <p class="lead">从下载到手机打开，不超过两分钟</p>
+    <div class="steps">
+      <div class="step"><div class="n"></div><div><b>启动服务</b><span>下载发布版双击运行，在「① 服务开关」点「▶ 启动服务」，几秒后状态点变绿。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>复制手机地址</b><span>切到「② 手机入口」，选好连接方式（推荐 Tailscale），点「复制手机地址」发到手机。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>手机打开</b><span>手机浏览器打开地址，和电脑看到的是同一个会话，思考过程逐字同步。</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h3>从源码构建</h3>
+    <p class="lead">Windows 10/11 + .NET 8 SDK，已安装 DeepSeek Harness（≥ 0.1.0-rc.6）</p>
+<pre>git clone https://github.com/Jensen-Yao/dsh-plus-plus.git
+cd dsh-plus-plus
+dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
+# 产物：publish/dsh-plus-plus.exe + compat-polyfill.js</pre>
+    <p style="margin-top:14px;font-size:14px;color:var(--text2)">无窗口自检：<code class="inline">dsh-plus-plus.exe --smoke</code>（诊断写到 %TEMP%\dsh-control-smoke.txt）</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    dsh++ · DeepSeek Harness（dsh）桌面控制台 · dsh-plugin 生态 ·
+    <a href="https://github.com/Jensen-Yao/dsh-plus-plus">GitHub</a> ·
+    <a href="https://github.com/Jensen-Yao/dsh-plus-plus/blob/main/LICENSE">MIT License</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,355 @@
+<Window x:Class="DshControl.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="dsh++ 控制台 — DeepSeek Harness 桌面控制"
+        Width="960" Height="720" MinWidth="860" MinHeight="580"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgAppBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        Icon="dsh-control.ico"
+        TextOptions.TextFormattingMode="Display">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ············ 头部 ············ -->
+        <Border Grid.Row="0" Background="{DynamicResource BgAppBrush}" Padding="24,14,24,10">
+            <Grid>
+                <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+                    <TextBlock Text="dsh++" Style="{StaticResource TbTitle}"/>
+                    <TextBlock Text="目标就一件事：让手机打开和电脑一样的界面"
+                               Style="{StaticResource TbSub}" Margin="0,2,0,0"/>
+                </StackPanel>
+                <Button x:Name="ThemeToggleBtn" Style="{StaticResource IconButtonStyle}"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        ToolTip="切换深浅色（应用会重启）" Click="ThemeToggle_Click">
+                    <Path x:Name="ThemeIcon" Style="{StaticResource HeaderIcon}"
+                          Data="{StaticResource SunGeom}" Stroke="{DynamicResource TextSecondaryBrush}"/>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- ············ 主体 ············ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ············ 侧边栏 ············ -->
+            <Border Grid.Column="0" Background="{DynamicResource BgSidebarBrush}" Padding="12,14,12,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 品牌块 -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,16">
+                        <Border Background="{DynamicResource PrimaryBrush}" CornerRadius="8"
+                                Width="32" Height="32">
+                            <TextBlock Text="++" Foreground="White" FontWeight="Bold" FontSize="13"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="dsh++" FontSize="14.5" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="DeepSeek Harness 桌面工具" FontSize="11.5"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 导航 -->
+                    <ListBox x:Name="NavList" Grid.Row="1"
+                             Style="{StaticResource NavListStyle}"
+                             ItemContainerStyle="{StaticResource NavItemStyle}"
+                             SelectionChanged="NavList_SelectionChanged">
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavFillIcon}" Data="{StaticResource BoltGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="服务开关" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="启动 / 停止 / 绑定状态" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource PhoneGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="手机入口" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="手机地址与连接检查" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource GearGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="高级设置" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="端口 / 免扫码 / 隧道" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource FolderGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="存储位置" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="数据、技能、MCP 的位置" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource DocGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="运行日志" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="dsh 的实时输出" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                    </ListBox>
+
+                    <!-- 底部 -->
+                    <StackPanel Grid.Row="2">
+                        <Button x:Name="BtnHelp" Content="使用说明" Style="{StaticResource BtnGhost}"
+                                HorizontalAlignment="Left" Height="30" Padding="14,0" Margin="2,0,0,6"
+                                Click="BtnHelp_Click"/>
+                        <StackPanel Orientation="Horizontal" Margin="2,2,0,0">
+                            <TextBlock FontSize="12">
+                                <Hyperlink x:Name="LinkSessions" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Click="LinkSessions_Click">打开会话目录</Hyperlink>
+                            </TextBlock>
+                            <TextBlock Text=" · " FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" Margin="6,0"/>
+                            <TextBlock FontSize="12">
+                                <Hyperlink x:Name="LinkConfigDir" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Click="LinkConfigDir_Click">打开配置目录</Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ············ 内容区 ············ -->
+            <Border Grid.Column="1" Background="{DynamicResource BgAppBrush}" Padding="16,10,16,16">
+                <Grid>
+                    <!-- ① 服务开关 -->
+                    <Grid x:Name="PageSvc">
+                        <Border Style="{StaticResource CardStyle}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="① 服务开关" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="把 dsh 网页服务跑起来（电脑上用的界面）"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,8"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,6">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Ellipse x:Name="SvcDot" Width="9" Height="9" Margin="0,0,7,0"
+                                                     Fill="{DynamicResource TextTertiaryBrush}"/>
+                                            <TextBlock x:Name="SvcStateText" Text="○ 服务未启动"
+                                                       FontSize="14" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="18,0,0,0">
+                                            <Button x:Name="BtnStart" Content="▶ 启动服务" Style="{StaticResource BtnPrimary}"
+                                                    Margin="0,0,8,0" Click="BtnStart_Click"/>
+                                            <Button x:Name="BtnStop" Content="停止服务" Style="{StaticResource BtnDanger}"
+                                                    Margin="0,0,8,0" Click="BtnStop_Click"/>
+                                            <Button x:Name="BtnOpenUi" Content="打开电脑界面" Style="{StaticResource BtnGhost}"
+                                                    Click="BtnOpenUi_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="PcUrlText" Style="{StaticResource TbSmall}"
+                                               Cursor="Hand" TextWrapping="Wrap" Margin="0,2,0,4"
+                                               ToolTip="点击复制到剪贴板" MouseLeftButtonUp="PcUrlText_Click"/>
+
+                                    <StackPanel Margin="0,8,0,0">
+                                        <ToggleButton x:Name="TglLocalOnly" Style="{StaticResource SwitchStyle}"
+                                                      Content="只让本机使用（对外只绑 127.0.0.1，手机连不进来）"
+                                                      Checked="TglLocalOnly_Changed" Unchecked="TglLocalOnly_Changed"/>
+                                        <TextBlock Text="取消勾选 = 绑定全网卡 0.0.0.0（手机可连）；修改后需「停止→启动」才生效"
+                                                   Style="{StaticResource TbHint}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="BindText" Style="{StaticResource TbSmall}"
+                                               TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- ② 手机入口 -->
+                    <Grid x:Name="PagePhone" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardStyle}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="② 手机入口" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="手机打开下面的地址，就能看到和电脑一样的界面"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
+
+                                    <TextBlock Text="怎么连：" Style="{StaticResource TbBody}" Margin="0,0,0,6"/>
+                                    <WrapPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="RbIp" GroupName="access" Style="{StaticResource OptionRadio}"
+                                                     Checked="RbIp_Checked" Margin="0,0,20,6">
+                                            <StackPanel>
+                                                <TextBlock Text="同一 Wi-Fi（最简单）" FontSize="14"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="电脑和手机连同一个 Wi-Fi 或手机热点" FontSize="12"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                            </StackPanel>
+                                        </RadioButton>
+                                        <RadioButton x:Name="RbDomain" GroupName="access" Style="{StaticResource OptionRadio}"
+                                                     Checked="RbDomain_Checked" Margin="0,0,20,6">
+                                            <StackPanel>
+                                                <TextBlock Text="自定义域名（高级）" FontSize="14"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="填一个指向这台电脑的域名" FontSize="12"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                            </StackPanel>
+                                        </RadioButton>
+                                        <RadioButton x:Name="RbTs" GroupName="access" Style="{StaticResource OptionRadio}"
+                                                     Checked="RbTs_Checked" Margin="0,0,20,6">
+                                            <StackPanel>
+                                                <TextBlock Text="任何网络 · Tailscale（推荐）" FontSize="14"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="两台设备装 Tailscale 登录同一账号，出门在外也能连" FontSize="12"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                            </StackPanel>
+                                        </RadioButton>
+                                    </WrapPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <TextBlock Text="域名：" Style="{StaticResource TbBody}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="HostBox" Style="{StaticResource InputStyle}" Width="230"
+                                                 TextChanged="HostBox_TextChanged"/>
+                                        <TextBlock Text="域名必须解析到这台电脑；不确定就选「Tailscale」"
+                                                   Style="{StaticResource TbHint}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <Border Style="{StaticResource HeroStyle}" Margin="0,12,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="HeroUrlText" FontSize="17" FontWeight="Bold"
+                                                       Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
+                                                       Cursor="Hand" ToolTip="点击复制；把它发到手机浏览器打开"
+                                                       MouseLeftButtonUp="HeroUrlText_Click"/>
+                                            <Button x:Name="BtnCopyPhone" Content="复制手机地址" Style="{StaticResource BtnPrimary}"
+                                                    Margin="16,0,0,0" Click="BtnCopyPhone_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <TextBlock x:Name="PhoneHintText" Style="{StaticResource TbHint}" Margin="0,8,0,0"/>
+
+                                    <TextBlock Text="连接检查（缺什么，点什么）：" Style="{StaticResource TbBody}"
+                                               Margin="0,14,0,0"/>
+                                    <TextBlock x:Name="CkSvcText" Style="{StaticResource TbBody}" Margin="12,6,0,0"
+                                               TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Margin="12,6,0,0">
+                                        <TextBlock x:Name="CkTsText" Style="{StaticResource TbBody}" VerticalAlignment="Center"/>
+                                        <Button x:Name="BtnTsFix" Content="登录" Style="{StaticResource BtnSecondary}"
+                                                Height="28" Padding="12,0" Margin="10,0,0,0" Click="BtnTsFix_Click"/>
+                                        <TextBlock x:Name="TsDetailText" Style="{StaticResource TbHint}"
+                                                   Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="380"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="12,6,0,0">
+                                        <TextBlock x:Name="CkFwText" Style="{StaticResource TbBody}" VerticalAlignment="Center"
+                                                   TextWrapping="Wrap" MaxWidth="480"/>
+                                        <Button x:Name="BtnFwAdd" Content="一键放行" Style="{StaticResource BtnSecondary}"
+                                                Height="28" Padding="12,0" Margin="10,0,0,0" Click="BtnFwAdd_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- ③ 高级设置 -->
+                    <Grid x:Name="PageAdv" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardStyle}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="③ 高级设置" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="平时不用动，保持默认即可"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <TextBlock Text="端口：" Style="{StaticResource TbBody}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="PortBox" Style="{StaticResource InputStyle}" Width="80"
+                                                 TextChanged="PortBox_TextChanged" PreviewTextInput="PortBox_PreviewTextInput"/>
+                                        <TextBlock Text="手机地址里的 :3080 就是它"
+                                                   Style="{StaticResource TbHint}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,16,0,0">
+                                        <ToggleButton x:Name="TglRequirePairing" Style="{StaticResource SwitchStyle}"
+                                                      Content="免扫码直接访问（手机打开地址就能用，无需配对）"
+                                                      Checked="TglRequirePairing_Changed" Unchecked="TglRequirePairing_Changed"/>
+                                        <TextBlock Text="关闭配对门禁后，能访问该地址的设备都可直接操作；走 Tailscale 较安全，公共 Wi-Fi 慎用"
+                                                   Style="{StaticResource TbHint}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,16,0,0">
+                                        <ToggleButton x:Name="TglAutoTunnel" Style="{StaticResource SwitchStyle}"
+                                                      Content="自动公网隧道（临时随机域名，仅供临时扫码）"
+                                                      Checked="TglAutoTunnel_Changed" Unchecked="TglAutoTunnel_Changed"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock x:Name="TunnelText" Style="{StaticResource TbHint}"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                            <Button x:Name="BtnCopyTunnel" Content="复制" Style="{StaticResource BtnGhost}"
+                                                    Height="26" Padding="10,0" Margin="8,0,0,0" IsEnabled="False"
+                                                    Click="BtnCopyTunnel_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- ④ 存储位置 -->
+                    <Grid x:Name="PageStore" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardStyle}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="④ 存储位置" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="dsh 的各类数据都放哪；技能（skill）与 MCP 的配置位置也在这里"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
+                                    <StackPanel x:Name="StoragePanel"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- ⑤ 运行日志 -->
+                    <Grid x:Name="PageLog" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardStyle}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Top">
+                                    <TextBlock Text="⑤ 运行日志" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="dsh 的实时输出；出问题时先看这里"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,8"/>
+                                </StackPanel>
+                                <Border Background="{DynamicResource LogBgBrush}" CornerRadius="10" Padding="10">
+                                    <TextBox x:Name="LogBox" Style="{StaticResource TbLog}"
+                                             Text="（尚无日志——点「启动服务」后，dsh 的输出会实时显示在这里）"/>
+                                </Border>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

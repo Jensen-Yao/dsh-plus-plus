@@ -1,0 +1,17 @@
+# 构建产物
+bin/
+obj/
+publish/
+*.user
+
+# 临时与调试
+*.pdb
+debug-shot*.png
+crop-*.png
+phone-shot.png
+codexpp-ref.png
+icon-preview.png
+
+# 系统文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,10 @@
+# LAN-exposure overlay for run-dsh-web.cmd (passed as: dsh web --patch <this>).
+# The webserver schema only accepts the loopback or all-interfaces literal, and
+# the CLI deliberately rejects --host 0.0.0.0, so the launcher applies the
+# all-interfaces bind through this patch layer instead. With host 0.0.0.0 the
+# web app derives this machine's LAN IP literals and adds them to the /api
+# browser-trust fence automatically.
+- id: webserver
+  config:
+    host: !!js ctx.webStartup.host ?? '0.0.0.0'
+    port: !!js ctx.webStartup.port ?? 3080
