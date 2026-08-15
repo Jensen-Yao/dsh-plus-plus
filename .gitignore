@@ -3,6 +3,8 @@ bin/
 obj/
 publish/
 *.user
+release/
+*.zip
 
 # 临时与调试
 *.pdb
