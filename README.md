@@ -1,7 +1,7 @@
 # dsh++
 
 <p align="center">
-  <img src="docs/icon.ico" width="96" alt="dsh++ icon" />
+  <img src="docs/icon.png" width="96" alt="dsh++ icon" />
 </p>
 
 <p align="center">
