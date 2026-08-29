@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,9 +21,12 @@ public partial class MainWindow : Window
 {
     readonly AppConfig cfg;
     readonly DshService svc;
+    readonly FreebuffService freebuff;
     readonly DispatcherTimer refreshTimer;
     bool fwDone;
     bool ready;
+    bool freebuffReveal;
+    int freebuffProbe;
     DateTime lastTunnelQuery;
     Action tsAction = () => { };
 
@@ -31,6 +35,7 @@ public partial class MainWindow : Window
         cfg = App.Cfg;
         svc = new DshService(cfg, Log);
         InitializeComponent();
+        freebuff = new FreebuffService(@"F:\freebuffapi", Log);
         SetThemeIcon();
         BuildStorageRows();
         LoadConfigToUi();
@@ -53,6 +58,7 @@ public partial class MainWindow : Window
         refreshTimer.Tick += (s, e) => RefreshAll();
         refreshTimer.Start();
         Closing += OnClosing;
+        Dispatcher.BeginInvoke(new Action(AutoStartFreebuff), DispatcherPriority.Background);
     }
 
     Brush B(string key) => (Brush)FindResource(key);
@@ -88,10 +94,11 @@ public partial class MainWindow : Window
         if (PageSvc == null) return;
         var idx = NavList.SelectedIndex;
         PageSvc.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
-        PagePhone.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
-        PageAdv.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
-        PageStore.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
-        PageLog.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
+        PageFreebuff.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
+        PagePhone.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
+        PageAdv.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
+        PageStore.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
+        PageLog.Visibility = idx == 5 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---------------------------------------------------------------- 配置
@@ -211,6 +218,108 @@ public partial class MainWindow : Window
     void BtnStop_Click(object sender, RoutedEventArgs e) => svc.StopDsh();
     void BtnOpenUi_Click(object sender, RoutedEventArgs e) => svc.OpenUi();
     void BtnFwAdd_Click(object sender, RoutedEventArgs e) { svc.AddFirewallRule(); fwDone = true; }
+
+    void AutoStartFreebuff()
+    {
+        if (freebuff.IsOperationInProgress) return;
+        Log("Freebuff 组件随 dsh++ 启动检查...");
+        Task.Run(() => freebuff.Start()).ContinueWith(t =>
+        {
+            var status = t.IsFaulted
+                ? new FreebuffStatus { State = FreebuffState.Error, Message = t.Exception?.GetBaseException().Message ?? "启动失败" }
+                : t.Result;
+            Dispatcher.BeginInvoke(new Action(() => ApplyFreebuffStatus(status)));
+        }, TaskScheduler.Default);
+    }
+
+    void BtnFreebuffStart_Click(object sender, RoutedEventArgs e)
+        => RunFreebuffOperation(() => freebuff.Start());
+
+    void BtnFreebuffStop_Click(object sender, RoutedEventArgs e)
+        => RunFreebuffOperation(() => freebuff.Stop());
+
+    void BtnFreebuffRefresh_Click(object sender, RoutedEventArgs e)
+        => RefreshFreebuffStatus(true);
+
+    void BtnFreebuffReveal_Click(object sender, RoutedEventArgs e)
+    {
+        freebuffReveal = !freebuffReveal;
+        ApplyFreebuffConnectionInfo();
+    }
+
+    void BtnFreebuffCopy_Click(object sender, RoutedEventArgs e)
+    {
+        CopyText($"Base URL: {freebuff.ConfiguredBaseUrl}{Environment.NewLine}API Key: {freebuff.ConfiguredApiKey}");
+    }
+
+    void RunFreebuffOperation(Func<FreebuffStatus> operation)
+    {
+        if (freebuff.IsOperationInProgress) return;
+        BtnFreebuffStart.IsEnabled = false;
+        BtnFreebuffStop.IsEnabled = false;
+        BtnFreebuffRefresh.IsEnabled = false;
+        FreebuffStateText.Text = "◌ 正在处理...";
+        Task.Run(operation).ContinueWith(t =>
+        {
+            var status = t.IsFaulted
+                ? new FreebuffStatus { State = FreebuffState.Error, Message = t.Exception?.GetBaseException().Message ?? "操作失败" }
+                : t.Result;
+            Dispatcher.BeginInvoke(new Action(() => ApplyFreebuffStatus(status)));
+        }, TaskScheduler.Default);
+    }
+
+    void RefreshFreebuffStatus(bool immediate = false)
+    {
+        if (!immediate && NavList.SelectedIndex != 1 && freebuffProbe != 0) return;
+        if (Interlocked.Exchange(ref freebuffProbe, 1) != 0) return;
+        Task.Run(() => freebuff.GetStatus()).ContinueWith(t =>
+        {
+            var status = t.IsFaulted
+                ? new FreebuffStatus { State = FreebuffState.Error, Message = t.Exception?.GetBaseException().Message ?? "状态检查失败" }
+                : t.Result;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                Interlocked.Exchange(ref freebuffProbe, 0);
+                ApplyFreebuffStatus(status);
+            }));
+        }, TaskScheduler.Default);
+    }
+
+    void ApplyFreebuffStatus(FreebuffStatus status)
+    {
+        Interlocked.Exchange(ref freebuffProbe, 0);
+        var color = status.State == FreebuffState.Running ? "SuccessBrush" :
+            status.State is FreebuffState.Starting ? "WarningBrush" : "TextTertiaryBrush";
+        FreebuffDot.Fill = B(color);
+        FreebuffStateText.Text = status.State switch
+        {
+            FreebuffState.Running => "● 正在运行",
+            FreebuffState.Starting => "◌ 正在启动",
+            FreebuffState.DockerUnavailable => "○ Docker 未就绪",
+            FreebuffState.Error => "○ 启动失败",
+            _ => "○ 未启动",
+        };
+        FreebuffStateText.Foreground = B(color);
+        FreebuffStatusText.Text = status.Message;
+        BtnFreebuffStart.IsEnabled = status.State != FreebuffState.Running && !freebuff.IsOperationInProgress;
+        BtnFreebuffStop.IsEnabled = status.State == FreebuffState.Running && !freebuff.IsOperationInProgress;
+        BtnFreebuffRefresh.IsEnabled = !freebuff.IsOperationInProgress;
+        ApplyFreebuffConnectionInfo();
+    }
+
+    void ApplyFreebuffConnectionInfo()
+    {
+        if (freebuffReveal)
+        {
+            FreebuffConnectionText.Text = $"Base URL: {freebuff.ConfiguredBaseUrl}{Environment.NewLine}API Key:  {freebuff.ConfiguredApiKey}";
+            BtnFreebuffReveal.Content = "隐藏 Base 和 Key";
+        }
+        else
+        {
+            FreebuffConnectionText.Text = "Base URL: ********\nAPI Key:  ********";
+            BtnFreebuffReveal.Content = "显示 Base 和 Key";
+        }
+    }
 
     void BtnTsFix_Click(object sender, RoutedEventArgs e) => tsAction();
 
@@ -415,6 +524,7 @@ public partial class MainWindow : Window
         catch { }
         try { RefreshTs(); } catch { }
         try { RefreshTunnel(); } catch { }
+        try { RefreshFreebuffStatus(); } catch { }
     }
 
     void RefreshTs()

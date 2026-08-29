@@ -20,7 +20,7 @@ public partial class App : Application
         }
         for (var i = 0; i < e.Args.Length - 1; i++)
             if (e.Args[i] == "--page" && int.TryParse(e.Args[i + 1], out var p))
-                StartPage = Math.Clamp(p, 0, 4);
+                StartPage = Math.Clamp(p, 0, 5);
         UiCheck = Array.IndexOf(e.Args, "--ui-check") >= 0;
         Cfg = AppConfig.Load();
         var theme = string.Equals(Cfg.Theme, "light", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark";

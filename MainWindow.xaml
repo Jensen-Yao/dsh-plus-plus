@@ -80,6 +80,17 @@
                         </ListBoxItem>
                         <ListBoxItem>
                             <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource FolderGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Freebuff 服务" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="Docker 启动 / Base / Key" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource PhoneGeom}"/>
                                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="手机入口" FontSize="14" FontWeight="SemiBold"
@@ -193,7 +204,57 @@
                         </Border>
                     </Grid>
 
-                    <!-- ② 手机入口 -->
+                    <!-- ② Freebuff 服务 -->
+                    <Grid x:Name="PageFreebuff" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardStyle}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="② Freebuff 服务" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="独立的 Docker 服务组件；不会修改 dsh 或 Codex 的默认配置"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,8">
+                                        <Ellipse x:Name="FreebuffDot" Width="9" Height="9" Margin="0,0,7,0"
+                                                 Fill="{DynamicResource TextTertiaryBrush}"/>
+                                        <TextBlock x:Name="FreebuffStateText" Text="○ 未检查"
+                                                   FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                        <Button x:Name="BtnFreebuffStart" Content="启动 Freebuff" Style="{StaticResource BtnPrimary}"
+                                                Margin="18,0,8,0" Click="BtnFreebuffStart_Click"/>
+                                        <Button x:Name="BtnFreebuffStop" Content="停止" Style="{StaticResource BtnDanger}"
+                                                Margin="0,0,8,0" Click="BtnFreebuffStop_Click"/>
+                                        <Button x:Name="BtnFreebuffRefresh" Content="刷新状态" Style="{StaticResource BtnGhost}"
+                                                Click="BtnFreebuffRefresh_Click"/>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="FreebuffStatusText" Style="{StaticResource TbHint}"
+                                               TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                                    <Border Style="{StaticResource HeroStyle}">
+                                        <StackPanel>
+                                            <TextBlock Text="可选连接信息" Style="{StaticResource TbBody}" FontWeight="SemiBold"/>
+                                            <TextBlock x:Name="FreebuffConnectionText" Text="Base URL: ********&#10;API Key:  ********"
+                                                       Style="{StaticResource TbSmall}" FontFamily="Consolas"
+                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <Button x:Name="BtnFreebuffReveal" Content="显示 Base 和 Key" Style="{StaticResource BtnSecondary}"
+                                                        Click="BtnFreebuffReveal_Click"/>
+                                                <Button x:Name="BtnFreebuffCopy" Content="复制连接信息" Style="{StaticResource BtnGhost}"
+                                                        Margin="8,0,0,0" Click="BtnFreebuffCopy_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <TextBlock Text="服务启动后，可把这组信息手动添加到任意客户端；它不会自动成为 DSH、Codex 或其他 Agent 的默认 Provider。"
+                                               Style="{StaticResource TbHint}" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="项目目录：F:\\freebuffapi\nDocker Desktop：E:\\DockerDesktop\\Docker Desktop.exe"
+                                               Style="{StaticResource TbHint}" Margin="0,12,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- ③ 手机入口 -->
                     <Grid x:Name="PagePhone" Visibility="Collapsed">
                         <Border Style="{StaticResource CardStyle}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -276,7 +337,7 @@
                         </Border>
                     </Grid>
 
-                    <!-- ③ 高级设置 -->
+                    <!-- ④ 高级设置 -->
                     <Grid x:Name="PageAdv" Visibility="Collapsed">
                         <Border Style="{StaticResource CardStyle}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -318,7 +379,7 @@
                         </Border>
                     </Grid>
 
-                    <!-- ④ 存储位置 -->
+                    <!-- ⑤ 存储位置 -->
                     <Grid x:Name="PageStore" Visibility="Collapsed">
                         <Border Style="{StaticResource CardStyle}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -332,7 +393,7 @@
                         </Border>
                     </Grid>
 
-                    <!-- ⑤ 运行日志 -->
+                    <!-- ⑥ 运行日志 -->
                     <Grid x:Name="PageLog" Visibility="Collapsed">
                         <Border Style="{StaticResource CardStyle}">
                             <DockPanel>

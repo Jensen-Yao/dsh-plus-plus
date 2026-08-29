@@ -32,6 +32,7 @@
 - **浏览器兼容补丁**：自动为网页入口注入 `crypto.randomUUID` / `AbortSignal.*` 等 polyfill（旧手机浏览器可用，npm 更新后自动重新注入）
 - **运行日志**：dsh 输出实时滚动查看
 - **深浅双主题**：右上角一键切换（应用自动重启），标题栏 / 侧边栏 / 卡片全套 token 换肤
+- **Freebuff 独立组件**：随 dsh++ 启动自动检查并启动 `F:\freebuffapi` 的 Docker 服务，也可以在独立页面手动启动 / 停止；Base URL 和 API Key 默认隐藏，可单独显示或复制
 
 ## 📸 截图
 
@@ -79,6 +80,7 @@ dsh-plus-plus.exe --smoke
 | 自动公网隧道 | `autoTunnel`：生成 trycloudflare.com 临时随机域名（仅供扫码配对） |
 | DSH 主目录 / Agents 目录 | 启动时注入 `DSH_HOME` / `DSH_AGENTS_HOME` 环境变量 |
 | 主题 | `dark` / `light`，右上角图标一键切换 |
+| Freebuff 服务 | 使用 `E:\DockerDesktop\Docker Desktop.exe` 和 `F:\freebuffapi\compose.yaml`；不修改 DSH / Codex 默认 Provider |
 
 配置文件保存在 `%APPDATA%\dsh-control\config.json`；修改端口/方式/域名/存储位置后需「停止→启动」生效。
 
@@ -88,8 +90,9 @@ dsh-plus-plus.exe --smoke
 dsh-plus-plus/
 ├── dsh-plus-plus.csproj      # 主项目（net8.0-windows + WPF）
 ├── App.xaml(.cs)             # 应用入口与主题装配（dark/light 资源字典）
-├── MainWindow.xaml(.cs)      # 主窗口：侧边栏 + 五个页面
+├── MainWindow.xaml(.cs)      # 主窗口：侧边栏 + 六个页面
 ├── DshService.cs             # 控制逻辑（与界面解耦）：启停/端口/绑定/Tailscale/存储
+├── FreebuffService.cs        # Freebuff Docker Desktop / Compose 启停与状态检查
 ├── Config.cs                 # 配置读写（%APPDATA%\dsh-control\config.json）
 ├── TailscaleCli.cs           # tailscale CLI 封装
 ├── FrontendPatch.cs          # 手机浏览器兼容补丁注入
