@@ -32,7 +32,7 @@
 - **浏览器兼容补丁**：自动为网页入口注入 `crypto.randomUUID` / `AbortSignal.*` 等 polyfill（旧手机浏览器可用，npm 更新后自动重新注入）
 - **运行日志**：dsh 输出实时滚动查看
 - **深浅双主题**：右上角一键切换（应用自动重启），标题栏 / 侧边栏 / 卡片全套 token 换肤
-- **Freebuff 独立组件**：随 dsh++ 启动自动检查并启动 `F:\freebuffapi` 的 Docker 服务，也可以在独立页面手动启动 / 停止；Base URL 和 API Key 默认隐藏，可单独显示或复制
+- **Freebuff 独立组件**：**不随 dsh++ 启动自动启动**，需要时在「② Freebuff 服务」页面单独启动 / 停止 `F:\freebuffapi` 的 Docker 服务；Base URL 和 API Key 默认隐藏，可单独显示或复制
 
 ## 📸 截图
 
@@ -87,7 +87,7 @@ dsh-plus-plus.exe --smoke
 
 ### Freebuff 本地服务
 
-dsh++ 会在启动时检查并启动 `F:\freebuffapi` 中的 Freebuff Docker 服务，也可以在「② Freebuff 服务」页面单独控制。该组件不会修改 DSH、Codex 或其他 Agent 的 Provider 配置。
+dsh++ **不会**随自身或 dsh 启动自动拉起 Freebuff；需要时在「② Freebuff 服务」页面点「启动 Freebuff」单独启动，或点「停止」单独停止（也可在页面直接刷新状态）。该组件不会修改 DSH、Codex 或其他 Agent 的 Provider 配置。
 
 默认连接信息：
 

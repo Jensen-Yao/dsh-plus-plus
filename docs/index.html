@@ -158,7 +158,7 @@
       <div class="card"><h4><span class="dot"></span>存储位置管理</h4><p>settings / sessions / storages / profiles / skills / agent-presets 一页看清；技能与 MCP 位置一键直达，主目录可直接修改。</p></div>
       <div class="card"><h4><span class="dot"></span>免扫码直连</h4><p>一键关闭手机远程插件的配对门禁，手机打开地址即可使用。</p></div>
       <div class="card"><h4><span class="dot"></span>兼容补丁自愈</h4><p>自动为网页入口注入 polyfill，旧手机浏览器也能用；npm 更新覆盖后自动重新注入。</p></div>
-      <div class="card"><h4><span class="dot"></span>Freebuff 独立组件</h4><p>随 dsh++ 检查并启动本机 Docker 中的 Freebuff2API；Base URL 和 API Key 默认隐藏，可显示或复制，不改其他客户端配置。</p></div>
+      <div class="card"><h4><span class="dot"></span>Freebuff 独立组件</h4><p>不随 dsh++ 自动启动；需要时在「② Freebuff 服务」页单独启动 / 停止本机 Docker 中的 Freebuff2API。Base URL 和 API Key 默认隐藏，可显示或复制，不改其他客户端配置。</p></div>
     </div>
   </div>
 </section>
@@ -179,7 +179,7 @@
 <section>
   <div class="wrap">
     <h3>Freebuff 本地服务</h3>
-    <p class="lead">可选组件，服务随 dsh++ 启动，也可以单独控制</p>
+    <p class="lead">可选组件，不随 dsh++ 启动，需要时在「② Freebuff 服务」页单独启动 / 停止</p>
 <pre>Base URL: http://127.0.0.1:18080/v1
 API Key:  fb-local-key
 

@@ -58,7 +58,8 @@ public partial class MainWindow : Window
         refreshTimer.Tick += (s, e) => RefreshAll();
         refreshTimer.Start();
         Closing += OnClosing;
-        Dispatcher.BeginInvoke(new Action(AutoStartFreebuff), DispatcherPriority.Background);
+        // Freebuff 组件不随 dsh++ 启动自动启动：只查一次状态，由「② Freebuff 服务」页面手动启动/停止
+        Dispatcher.BeginInvoke(new Action(() => RefreshFreebuffStatus(true)), DispatcherPriority.Background);
     }
 
     Brush B(string key) => (Brush)FindResource(key);
@@ -218,19 +219,6 @@ public partial class MainWindow : Window
     void BtnStop_Click(object sender, RoutedEventArgs e) => svc.StopDsh();
     void BtnOpenUi_Click(object sender, RoutedEventArgs e) => svc.OpenUi();
     void BtnFwAdd_Click(object sender, RoutedEventArgs e) { svc.AddFirewallRule(); fwDone = true; }
-
-    void AutoStartFreebuff()
-    {
-        if (freebuff.IsOperationInProgress) return;
-        Log("Freebuff 组件随 dsh++ 启动检查...");
-        Task.Run(() => freebuff.Start()).ContinueWith(t =>
-        {
-            var status = t.IsFaulted
-                ? new FreebuffStatus { State = FreebuffState.Error, Message = t.Exception?.GetBaseException().Message ?? "启动失败" }
-                : t.Result;
-            Dispatcher.BeginInvoke(new Action(() => ApplyFreebuffStatus(status)));
-        }, TaskScheduler.Default);
-    }
 
     void BtnFreebuffStart_Click(object sender, RoutedEventArgs e)
         => RunFreebuffOperation(() => freebuff.Start());
