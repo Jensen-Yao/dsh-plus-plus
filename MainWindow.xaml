@@ -259,7 +259,7 @@
                         <Border Style="{StaticResource CardStyle}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <TextBlock Text="② 手机入口" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="③ 手机入口" Style="{StaticResource TbCardTitle}"/>
                                     <TextBlock Text="手机打开下面的地址，就能看到和电脑一样的界面"
                                                Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
 
@@ -342,7 +342,7 @@
                         <Border Style="{StaticResource CardStyle}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <TextBlock Text="③ 高级设置" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="④ 高级设置" Style="{StaticResource TbCardTitle}"/>
                                     <TextBlock Text="平时不用动，保持默认即可"
                                                Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
 
@@ -384,7 +384,7 @@
                         <Border Style="{StaticResource CardStyle}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <TextBlock Text="④ 存储位置" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="⑤ 存储位置" Style="{StaticResource TbCardTitle}"/>
                                     <TextBlock Text="dsh 的各类数据都放哪；技能（skill）与 MCP 的配置位置也在这里"
                                                Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
                                     <StackPanel x:Name="StoragePanel"/>
@@ -398,7 +398,7 @@
                         <Border Style="{StaticResource CardStyle}">
                             <DockPanel>
                                 <StackPanel DockPanel.Dock="Top">
-                                    <TextBlock Text="⑤ 运行日志" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="⑥ 运行日志" Style="{StaticResource TbCardTitle}"/>
                                     <TextBlock Text="dsh 的实时输出；出问题时先看这里"
                                                Style="{StaticResource TbSub}" Margin="0,2,0,8"/>
                                 </StackPanel>

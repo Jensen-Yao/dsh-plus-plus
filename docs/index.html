@@ -6,7 +6,7 @@
 <title>dsh++ — DeepSeek Harness 桌面控制台</title>
 <link rel="icon" type="image/png" href="icon.png" />
 <meta property="og:title" content="dsh++ — DeepSeek Harness 桌面控制台" />
-<meta property="og:description" content="把 dsh web 从命令行搬进桌面应用：一键启停、手机同屏、Tailscale、存储位置一站式管理。" />
+<meta property="og:description" content="把 dsh web 从命令行搬进桌面应用，并集成可选的 Freebuff Docker 服务：一键启停、手机同屏、Tailscale、存储位置一站式管理。" />
 <meta property="og:image" content="https://jensen-yao.github.io/dsh-plus-plus/icon.png" />
 <style>
   :root {
@@ -125,7 +125,7 @@
     <p>把 <code class="inline">dsh web</code> 从命令行搬进一个漂亮的桌面应用——一键启停、手机地址、Tailscale、防火墙、存储位置，全部集中管理；手机随时连上同一个会话，思考过程完全同步。</p>
     <div class="tags">
       <span>Windows 10/11</span><span>.NET 8 · WPF</span><span>深浅双主题</span>
-      <span>Tailscale</span><span>手机远程</span><span>免扫码</span><span>MIT</span>
+      <span>Tailscale</span><span>手机远程</span><span>Freebuff · Docker</span><span>免扫码</span><span>MIT</span>
     </div>
     <div class="cta">
       <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载最新版</a>
@@ -158,19 +158,34 @@
       <div class="card"><h4><span class="dot"></span>存储位置管理</h4><p>settings / sessions / storages / profiles / skills / agent-presets 一页看清；技能与 MCP 位置一键直达，主目录可直接修改。</p></div>
       <div class="card"><h4><span class="dot"></span>免扫码直连</h4><p>一键关闭手机远程插件的配对门禁，手机打开地址即可使用。</p></div>
       <div class="card"><h4><span class="dot"></span>兼容补丁自愈</h4><p>自动为网页入口注入 polyfill，旧手机浏览器也能用；npm 更新覆盖后自动重新注入。</p></div>
+      <div class="card"><h4><span class="dot"></span>Freebuff 独立组件</h4><p>随 dsh++ 检查并启动本机 Docker 中的 Freebuff2API；Base URL 和 API Key 默认隐藏，可显示或复制，不改其他客户端配置。</p></div>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h3>三步上手</h3>
+    <h3>快速上手</h3>
     <p class="lead">从下载到手机打开，不超过两分钟</p>
     <div class="steps">
       <div class="step"><div class="n"></div><div><b>启动服务</b><span>下载发布版双击运行，在「① 服务开关」点「▶ 启动服务」，几秒后状态点变绿。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>复制手机地址</b><span>切到「② 手机入口」，选好连接方式（推荐 Tailscale），点「复制手机地址」发到手机。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>启动 Freebuff（可选）</b><span>需要时切到「② Freebuff 服务」点击「启动 Freebuff」，可复制本地 Base URL 和 API Key 给 DSH、Codex 或其他 Agent。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>复制手机地址</b><span>切到「③ 手机入口」，选好连接方式（推荐 Tailscale），点「复制手机地址」发到手机。</span></div></div>
       <div class="step"><div class="n"></div><div><b>手机打开</b><span>手机浏览器打开地址，和电脑看到的是同一个会话，思考过程逐字同步。</span></div></div>
     </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h3>Freebuff 本地服务</h3>
+    <p class="lead">可选组件，服务随 dsh++ 启动，也可以单独控制</p>
+<pre>Base URL: http://127.0.0.1:18080/v1
+API Key:  fb-local-key
+
+项目目录：F:\freebuffapi
+配置文件：F:\freebuffapi\.env</pre>
+    <p style="margin-top:14px;font-size:14px;color:var(--text2)">客户端 Provider 由你自行配置；修改端口或本地 Key 后，重启 Freebuff 服务即可。</p>
   </div>
 </section>
 

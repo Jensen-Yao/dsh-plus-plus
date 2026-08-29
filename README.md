@@ -50,9 +50,10 @@
 ### 使用发布版
 
 1. 下载 [最新 Release](https://github.com/Jensen-Yao/dsh-plus-plus/releases) 的 `dsh-plus-plus.exe` 与 `compat-polyfill.js`，放同一目录
-2. 双击运行，在「④ 存储位置」确认 DSH 主目录正确
+2. 双击运行，在「⑤ 存储位置」确认 DSH 主目录正确
 3. 点「① 服务开关」→「▶ 启动服务」
-4. 点「② 手机入口」→「复制手机地址」，发到手机浏览器打开
+4. 如需使用 Freebuff，进入「② Freebuff 服务」点击「启动 Freebuff」
+5. 点「③ 手机入口」→「复制手机地址」，发到手机浏览器打开
 
 ### 从源码构建
 
@@ -83,6 +84,19 @@ dsh-plus-plus.exe --smoke
 | Freebuff 服务 | 使用 `E:\DockerDesktop\Docker Desktop.exe` 和 `F:\freebuffapi\compose.yaml`；不修改 DSH / Codex 默认 Provider |
 
 配置文件保存在 `%APPDATA%\dsh-control\config.json`；修改端口/方式/域名/存储位置后需「停止→启动」生效。
+
+### Freebuff 本地服务
+
+dsh++ 会在启动时检查并启动 `F:\freebuffapi` 中的 Freebuff Docker 服务，也可以在「② Freebuff 服务」页面单独控制。该组件不会修改 DSH、Codex 或其他 Agent 的 Provider 配置。
+
+默认连接信息：
+
+```text
+Base URL: http://127.0.0.1:18080/v1
+API Key:  fb-local-key
+```
+
+需要调整端口或本地访问密码时，编辑 `F:\freebuffapi\.env` 中的 `FREEBUFF_PORT` / `FREEBUFF_API_KEY`，然后重启 Freebuff 服务。Freebuff 登录 Token 仅供本地服务使用，不要填入客户端。
 
 ## 📁 仓库结构
 
