@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace DshControl;
@@ -37,6 +38,14 @@ public static class Smoke
             W("TailscaleInstalled=" + TailscaleCli.Exists(cfg));
             W("BuildDshCommand=" + svc.BuildDshCommand());
             W("Theme=" + cfg.Theme);
+            var upd = new UpdateService(cfg, svc);
+            var (dshVer, dshErr) = upd.LocalDshVersion();
+            W("AppVersion=" + UpdateService.AppVersion());
+            W("DshLocalVersion=" + (dshErr ?? dshVer));
+            var profiles = upd.Profiles();
+            W("Profiles=" + profiles.Count + "  plugins=" + profiles.Sum(p => p.Plugins.Count)
+                + "  " + string.Join(",", profiles.Select(p => p.Name + ":" + p.Plugins.Count)));
+            W("AutoUpdatePlugins=" + cfg.AutoUpdatePlugins);
             var rows = svc.StorageRows();
             W("StorageRows=" + rows.Count);
             foreach (var r in rows)

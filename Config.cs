@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +18,7 @@ public class AppConfig
     public string DshHome { get; set; } = "";         // DSH_HOME 总根（空 = 默认 ~/.dsh）
     public string AgentsHome { get; set; } = "";      // DSH_AGENTS_HOME（空 = 默认 ~/.agents）
     public string TailscalePath { get; set; } = @"C:\Program Files\Tailscale\tailscale.exe";
+    public bool AutoUpdatePlugins { get; set; } = true;  // dsh++ 启动时自动更新 profiles 插件（dsh 运行中则跳过）
 
     public static string ConfigDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "dsh-control");

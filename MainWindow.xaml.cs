@@ -22,11 +22,17 @@ public partial class MainWindow : Window
     readonly AppConfig cfg;
     readonly DshService svc;
     readonly FreebuffService freebuff;
+    readonly UpdateService upd;
     readonly DispatcherTimer refreshTimer;
     bool fwDone;
     bool ready;
     bool freebuffReveal;
     int freebuffProbe;
+    bool dshUpdating;
+    bool appUpdating;
+    bool pluginsUpdating;
+    bool appUpdateReady;
+    string appUpdateZip;
     DateTime lastTunnelQuery;
     Action tsAction = () => { };
 
@@ -36,6 +42,7 @@ public partial class MainWindow : Window
         svc = new DshService(cfg, Log);
         InitializeComponent();
         freebuff = new FreebuffService(@"F:\freebuffapi", Log);
+        upd = new UpdateService(cfg, svc, Log);
         SetThemeIcon();
         BuildStorageRows();
         LoadConfigToUi();
@@ -44,6 +51,8 @@ public partial class MainWindow : Window
         RefreshAll();
         ready = true;
         NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : 0;
+        // 更新中心：先显示本地信息，再后台自动检查（dsh++ 新版本 / 插件自动更新）
+        Dispatcher.BeginInvoke(new Action(InitUpdateCenter), DispatcherPriority.Background);
         if (App.UiCheck)
             Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -99,7 +108,9 @@ public partial class MainWindow : Window
         PagePhone.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
         PageAdv.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
         PageStore.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
-        PageLog.Visibility = idx == 5 ? Visibility.Visible : Visibility.Collapsed;
+        PageUpdates.Visibility = idx == 5 ? Visibility.Visible : Visibility.Collapsed;
+        PageLog.Visibility = idx == 6 ? Visibility.Visible : Visibility.Collapsed;
+        if (idx == 5) RefreshUpdateStats();
     }
 
     // ---------------------------------------------------------------- 配置
@@ -116,6 +127,7 @@ public partial class MainWindow : Window
         HostBox.IsEnabled = am == "domain";
         TglAutoTunnel.IsChecked = cfg.AutoTunnel;
         TglRequirePairing.IsChecked = !cfg.RequirePairing;
+        TglAutoPlugin.IsChecked = cfg.AutoUpdatePlugins;
         UpdatePhonePreview();
     }
 
@@ -219,6 +231,242 @@ public partial class MainWindow : Window
     void BtnStop_Click(object sender, RoutedEventArgs e) => svc.StopDsh();
     void BtnOpenUi_Click(object sender, RoutedEventArgs e) => svc.OpenUi();
     void BtnFwAdd_Click(object sender, RoutedEventArgs e) { svc.AddFirewallRule(); fwDone = true; }
+
+    // ---------------------------------------------------------------- 更新中心
+
+    void InitUpdateCenter()
+    {
+        AppVerText.Text = "当前版本：" + UpdateService.AppVersion();
+        var (ver, err) = upd.LocalDshVersion();
+        DshVerText.Text = err == null ? "当前版本：" + ver : "当前版本：读取失败（" + err + "）";
+        RefreshUpdateStats();
+        // 后台检查一次 dsh++ 新版本（不阻塞、失败不打扰）
+        Task.Run(async () =>
+        {
+            var (tag, zip, e2) = await upd.LatestAppReleaseAsync();
+            _ = Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (e2 != null) return; // 静默失败，需要时手动点「检查」
+                var latest = (tag ?? "").TrimStart('v', 'V');
+                if (UpdateService.IsNewer(latest, UpdateService.AppVersion()))
+                {
+                    appUpdateReady = true;
+                    appUpdateZip = zip;
+                    BtnAppUpdate.IsEnabled = true;
+                    AppUpdHint.Text = $"发现新版本 {tag}（当前 {UpdateService.AppVersion()}）——点「一键更新」自动下载并重启。";
+                    Log("[自更新] 发现 dsh++ 新版本 " + tag);
+                }
+                else
+                {
+                    AppUpdHint.Text = $"dsh++ 已是最新（{UpdateService.AppVersion()}）。";
+                }
+            }));
+        });
+        // 插件自动更新：开关打开且 dsh 未运行时执行一次
+        if (cfg.AutoUpdatePlugins && !svc.IsDshRunning())
+        {
+            Task.Run(() =>
+            {
+                var (ok, msg) = upd.UpdateAllPlugins();
+                Log("[插件] 自动更新：" + msg);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    PluginHintText.Text = msg;
+                    RefreshUpdateStats();
+                }));
+            });
+        }
+        else if (cfg.AutoUpdatePlugins)
+        {
+            Log("[插件] dsh 正在运行，跳过启动时自动更新；停止服务后可在「⑥ 检查更新」手动更新。");
+        }
+    }
+
+    void RefreshUpdateStats()
+    {
+        if (pluginsUpdating) return;
+        try { PluginStatText.Text = "插件：" + upd.PluginSummary(); } catch { }
+    }
+
+    async void BtnDshCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (dshUpdating) return;
+        BtnDshCheck.IsEnabled = false;
+        DshUpdHint.Text = "正在检查 npm 上的版本（正式版 / 抢先体验版）…";
+        try
+        {
+            var (local, lerr) = upd.LocalDshVersion();
+            var (latest, alpha, rerr) = await Task.Run(() => upd.RemoteDshVersions());
+            if (lerr != null) { DshUpdHint.Text = "读取本地版本失败：" + lerr; return; }
+            DshVerText.Text = "当前版本：" + local;
+            if (rerr != null) { DshUpdHint.Text = "检查失败：" + (rerr.Split('\n').FirstOrDefault()?.Trim() ?? rerr); return; }
+            var stableNewer = UpdateService.IsNewer(latest, local);
+            var alphaNewer = UpdateService.IsNewer(alpha, local);
+            BtnDshUpdateStable.IsEnabled = stableNewer;
+            BtnDshUpdateAlpha.IsEnabled = alphaNewer;
+            DshRemoteText.Text = $"最新版本：正式 {latest} · 抢先体验 {alpha}" + (string.IsNullOrEmpty(alpha) ? "（源未提供）" : "");
+            if (stableNewer || alphaNewer)
+                DshUpdHint.Text = $"当前 {local}，有可更新的版本——正式版更稳，抢先体验版（对应 GitHub alpha Release）功能更新但可能不稳定。";
+            else
+                DshUpdHint.Text = $"当前 {local}，正式版与抢先体验版都已是最新或更高。";
+        }
+        finally { BtnDshCheck.IsEnabled = true; }
+    }
+
+    async void DoDshUpdate(string spec)
+    {
+        if (dshUpdating) return;
+        var label = spec == "alpha" ? "抢先体验版" : "正式版";
+        if (svc.IsDshRunning())
+        {
+            var r = MessageBox.Show(this, $"更新 dsh 需要先停止服务。现在停止并更新到{label}吗？",
+                "更新 dsh", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            if (r != MessageBoxResult.OK) return;
+            svc.StopDsh();
+            for (var i = 0; i < 15 && svc.IsDshRunning(); i++) await Task.Delay(1000);
+            if (svc.IsDshRunning())
+            {
+                MessageBox.Show(this, "服务未能停止，请稍后手动重试。", "更新 dsh", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+        dshUpdating = true;
+        BtnDshUpdateStable.IsEnabled = false;
+        BtnDshUpdateAlpha.IsEnabled = false;
+        BtnDshCheck.IsEnabled = false;
+        DshUpdHint.Text = $"正在更新 dsh 到{label}（npm install，可能需要几分钟，详见运行日志）…";
+        try
+        {
+            var (ok, msg) = await Task.Run(() => upd.UpdateDsh(spec));
+            DshUpdHint.Text = msg;
+            if (ok)
+            {
+                var (ver, _) = upd.LocalDshVersion();
+                DshVerText.Text = "当前版本：" + ver;
+                DshRemoteText.Text = "最新版本：未检查";
+                try { FrontendPatch.Ensure(cfg, Log); } catch { }
+            }
+            else
+            {
+                BtnDshUpdateStable.IsEnabled = true;
+                BtnDshUpdateAlpha.IsEnabled = true;
+            }
+        }
+        finally { dshUpdating = false; BtnDshCheck.IsEnabled = true; }
+    }
+
+    void BtnDshUpdateStable_Click(object sender, RoutedEventArgs e) => DoDshUpdate("latest");
+    void BtnDshUpdateAlpha_Click(object sender, RoutedEventArgs e) => DoDshUpdate("alpha");
+
+    async void BtnAppCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (appUpdating) return;
+        BtnAppCheck.IsEnabled = false;
+        AppUpdHint.Text = "正在检查 GitHub 最新 Release…";
+        try
+        {
+            var (tag, zip, err) = await upd.LatestAppReleaseAsync();
+            if (err != null) { AppUpdHint.Text = "检查失败：" + err; return; }
+            var latest = (tag ?? "").TrimStart('v', 'V');
+            if (UpdateService.IsNewer(latest, UpdateService.AppVersion()))
+            {
+                appUpdateReady = true;
+                appUpdateZip = zip;
+                BtnAppUpdate.IsEnabled = true;
+                AppUpdHint.Text = $"发现新版本 {tag}（当前 {UpdateService.AppVersion()}）——点「一键更新」自动下载并重启。";
+            }
+            else
+            {
+                BtnAppUpdate.IsEnabled = false;
+                AppUpdHint.Text = $"dsh++ 已是最新（{UpdateService.AppVersion()}）。";
+            }
+        }
+        finally { BtnAppCheck.IsEnabled = true; }
+    }
+
+    async void BtnAppUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (appUpdating || !appUpdateReady) return;
+        var r = MessageBox.Show(this, "将下载新版本并自动替换重启（更新期间 dsh++ 会关闭一次，dsh 服务不受影响）。继续吗？",
+            "更新 dsh++", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (r != MessageBoxResult.OK) return;
+        appUpdating = true;
+        BtnAppUpdate.IsEnabled = false;
+        AppUpdHint.Text = "正在下载更新包…";
+        var (ok, msg) = await upd.ApplyAppUpdateAsync(appUpdateZip);
+        if (ok)
+        {
+            AppUpdHint.Text = msg;
+            await Task.Delay(800);
+            Application.Current.Shutdown();
+        }
+        else
+        {
+            AppUpdHint.Text = msg;
+            appUpdating = false;
+            BtnAppUpdate.IsEnabled = true;
+        }
+    }
+
+    void BtnOpenReleases_Click(object sender, RoutedEventArgs e)
+    {
+        try { Process.Start(new ProcessStartInfo("https://github.com/Jensen-Yao/dsh-plus-plus/releases") { UseShellExecute = true }); } catch { }
+    }
+
+    void BtnPluginRefresh_Click(object sender, RoutedEventArgs e) => RefreshUpdateStats();
+
+    void BtnPluginVersions_Click(object sender, RoutedEventArgs e)
+    {
+        if (PluginListBorder.Visibility == Visibility.Visible)
+        {
+            PluginListBorder.Visibility = Visibility.Collapsed;
+            BtnPluginVersions.Content = "查看插件版本";
+            return;
+        }
+        BtnPluginVersions.Content = "隐藏插件版本";
+        PluginListText.Text = "正在读取插件版本…";
+        PluginListBorder.Visibility = Visibility.Visible;
+        Task.Run(() =>
+        {
+            var report = upd.PluginVersionsReport();
+            Dispatcher.BeginInvoke(new Action(() => PluginListText.Text = report));
+        });
+    }
+
+    async void BtnPluginUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (pluginsUpdating) return;
+        if (svc.IsDshRunning())
+        {
+            MessageBox.Show(this, "插件更新需要先停止 dsh 服务：请到「① 服务开关」点「停止服务」，再回来更新。",
+                "更新插件", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        pluginsUpdating = true;
+        BtnPluginUpdate.IsEnabled = false;
+        BtnPluginRefresh.IsEnabled = false;
+        PluginHintText.Text = "正在更新插件（逐 profile 执行 pnpm update，详见运行日志）…";
+        try
+        {
+            var (ok, msg) = await Task.Run(() => upd.UpdateAllPlugins());
+            PluginHintText.Text = msg;
+            Log("[插件] " + msg);
+        }
+        finally
+        {
+            pluginsUpdating = false;
+            BtnPluginUpdate.IsEnabled = true;
+            BtnPluginRefresh.IsEnabled = true;
+            RefreshUpdateStats();
+        }
+    }
+
+    void TglAutoPlugin_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!ready) return;
+        cfg.AutoUpdatePlugins = TglAutoPlugin.IsChecked == true;
+        cfg.Save();
+    }
 
     void BtnFreebuffStart_Click(object sender, RoutedEventArgs e)
         => RunFreebuffOperation(() => freebuff.Start());

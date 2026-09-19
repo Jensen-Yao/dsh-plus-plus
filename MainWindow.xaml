@@ -124,6 +124,17 @@
                         </ListBoxItem>
                         <ListBoxItem>
                             <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource GearGeom}"/>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="检查更新" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                    <TextBlock Text="dsh / dsh++ / 插件" FontSize="11.5"
+                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource DocGeom}"/>
                                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="运行日志" FontSize="14" FontWeight="SemiBold"
@@ -393,12 +404,91 @@
                         </Border>
                     </Grid>
 
-                    <!-- ⑥ 运行日志 -->
+                    <!-- ⑥ 检查更新 -->
+                    <Grid x:Name="PageUpdates" Visibility="Collapsed">
+                        <Border Style="{StaticResource CardStyle}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="⑥ 检查更新" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="dsh 内核、dsh++ 本体、已装插件，三类更新都在这里"
+                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
+
+                                    <TextBlock Text="dsh（DeepSeek Harness 内核）" Style="{StaticResource TbBody}"
+                                               FontWeight="SemiBold" Margin="0,4,0,4"/>
+                                    <TextBlock x:Name="DshVerText" Text="当前版本：读取中…" Style="{StaticResource TbSmall}"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="DshRemoteText" Text="最新版本：未检查" Style="{StaticResource TbSmall}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button x:Name="BtnDshCheck" Content="检查 dsh 更新" Style="{StaticResource BtnSecondary}"
+                                                Margin="0,0,8,0" Click="BtnDshCheck_Click"/>
+                                        <Button x:Name="BtnDshUpdateStable" Content="更新到正式版" Style="{StaticResource BtnPrimary}"
+                                                IsEnabled="False" Margin="0,0,8,0" Click="BtnDshUpdateStable_Click"/>
+                                        <Button x:Name="BtnDshUpdateAlpha" Content="更新到抢先体验版（alpha）" Style="{StaticResource BtnSecondary}"
+                                                IsEnabled="False" Click="BtnDshUpdateAlpha_Click"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="DshUpdHint" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Text="更新会先要求停止 dsh 服务；npm 更新完成后兼容补丁自动重新注入，点「启动服务」即可。"/>
+
+                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,8"/>
+
+                                    <TextBlock Text="dsh++（本程序）" Style="{StaticResource TbBody}"
+                                               FontWeight="SemiBold" Margin="0,4,0,4"/>
+                                    <TextBlock x:Name="AppVerText" Text="当前版本：读取中…" Style="{StaticResource TbSmall}"
+                                               TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button x:Name="BtnAppCheck" Content="检查 dsh++ 更新" Style="{StaticResource BtnSecondary}"
+                                                Margin="0,0,8,0" Click="BtnAppCheck_Click"/>
+                                        <Button x:Name="BtnAppUpdate" Content="一键更新" Style="{StaticResource BtnPrimary}"
+                                                IsEnabled="False" Margin="0,0,8,0" Click="BtnAppUpdate_Click"/>
+                                        <Button x:Name="BtnOpenRel" Content="打开发布页" Style="{StaticResource BtnGhost}"
+                                                Click="BtnOpenReleases_Click"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="AppUpdHint" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Text="一键更新会从 GitHub Release 下载新版，自动替换并重启 dsh++；也可以点「打开发布页」手动下载。"/>
+
+                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,8"/>
+
+                                    <TextBlock Text="dsh 插件（profiles 内已安装）" Style="{StaticResource TbBody}"
+                                               FontWeight="SemiBold" Margin="0,4,0,4"/>
+                                    <StackPanel Margin="0,2,0,0">
+                                        <ToggleButton x:Name="TglAutoPlugin" Style="{StaticResource SwitchStyle}"
+                                                      Content="dsh++ 启动时自动更新插件（dsh 运行中则自动跳过）"
+                                                      Checked="TglAutoPlugin_Changed" Unchecked="TglAutoPlugin_Changed"/>
+                                        <TextBlock Text="自动更新在 dsh++ 打开且 dsh 未运行时后台执行，过程写入「⑦ 运行日志」"
+                                                   Style="{StaticResource TbHint}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="PluginStatText" Text="插件：统计中…" Style="{StaticResource TbSmall}"
+                                               TextWrapping="Wrap" Margin="0,10,0,0"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button x:Name="BtnPluginRefresh" Content="重新统计" Style="{StaticResource BtnGhost}"
+                                                Margin="0,0,8,0" Click="BtnPluginRefresh_Click"/>
+                                        <Button x:Name="BtnPluginVersions" Content="查看插件版本" Style="{StaticResource BtnSecondary}"
+                                                Margin="0,0,8,0" Click="BtnPluginVersions_Click"/>
+                                        <Button x:Name="BtnPluginUpdate" Content="立即更新全部插件" Style="{StaticResource BtnPrimary}"
+                                                Click="BtnPluginUpdate_Click"/>
+                                    </StackPanel>
+                                    <Border x:Name="PluginListBorder" Visibility="Collapsed"
+                                            Background="{DynamicResource LogBgBrush}" CornerRadius="10"
+                                            Padding="10" Margin="0,10,0,0">
+                                        <TextBox x:Name="PluginListText" Style="{StaticResource TbLog}"
+                                                 IsReadOnly="True" TextWrapping="NoWrap"
+                                                 VerticalScrollBarVisibility="Auto" Height="210"
+                                                 Text="（点「查看插件版本」获取明细）"/>
+                                    </Border>
+                                    <TextBlock x:Name="PluginHintText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Text="更新会逐个 profile 执行 pnpm update（GitHub 插件重新拉取最新提交）；需要先停止 dsh，更新完成后「停止→启动」生效。"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- ⑦ 运行日志 -->
                     <Grid x:Name="PageLog" Visibility="Collapsed">
                         <Border Style="{StaticResource CardStyle}">
                             <DockPanel>
                                 <StackPanel DockPanel.Dock="Top">
-                                    <TextBlock Text="⑥ 运行日志" Style="{StaticResource TbCardTitle}"/>
+                                    <TextBlock Text="⑦ 运行日志" Style="{StaticResource TbCardTitle}"/>
                                     <TextBlock Text="dsh 的实时输出；出问题时先看这里"
                                                Style="{StaticResource TbSub}" Margin="0,2,0,8"/>
                                 </StackPanel>

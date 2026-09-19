@@ -31,6 +31,7 @@
 - **自动公网隧道**：autoTunnel 开关 + 临时随机域名实时显示
 - **浏览器兼容补丁**：自动为网页入口注入 `crypto.randomUUID` / `AbortSignal.*` 等 polyfill（旧手机浏览器可用，npm 更新后自动重新注入）
 - **运行日志**：dsh 输出实时滚动查看
+- **更新中心（⑥ 检查更新）**：dsh 内核**双通道**更新——同时展示 npm 正式版（latest）与抢先体验版（alpha，对应 GitHub Release），一键更新到任一通道（更新前自动要求停止服务，兼容补丁自动重注入）；dsh++ 本体从 GitHub Release 检查并**一键自更新**（下载→替换→自动重启）；已装插件支持**一键查看版本明细**（逐 profile 列出插件名、已装版本、依赖声明）与**一键更新全部插件**（逐 profile `pnpm update`，GitHub 插件重新拉取最新提交），并可开关「启动时自动更新」
 - **深浅双主题**：右上角一键切换（应用自动重启），标题栏 / 侧边栏 / 卡片全套 token 换肤
 - **Freebuff 独立组件**：**不随 dsh++ 启动自动启动**，需要时在「② Freebuff 服务」页面单独启动 / 停止 `F:\freebuffapi` 的 Docker 服务；Base URL 和 API Key 默认隐藏，可单独显示或复制
 
