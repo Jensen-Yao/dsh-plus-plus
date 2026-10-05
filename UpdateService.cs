@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace DshControl;
@@ -370,30 +371,61 @@ public class UpdateService
 
         var okCount = 0;
         var fail = new List<string>();
+        var skipped = new List<string>();
         foreach (var p in profiles)
         {
-            Log($"[插件] 更新 profile「{p.Name}」（{p.Plugins.Count} 个插件）…");
-            var names = string.Join(" ", p.Plugins.Select(x => Quote(x.Name)));
+            var updatable = p.Plugins.Where(x => SpecUpdatable(x.Spec)).Select(x => Quote(x.Name)).ToList();
+            if (updatable.Count == 0)
+            {
+                Log($"[插件] 跳过 profile「{p.Name}」：全部为精确钉死版本或本地包，无可更新项。");
+                skipped.Add(p.Name);
+                continue;
+            }
+            Log($"[插件] 更新 profile「{p.Name}」（{updatable.Count}/{p.Plugins.Count} 个插件可更新）…");
+            var names = string.Join(" ", updatable);
             var (code, output) = RunCapture("cmd.exe", "/c pnpm update", p.Dir, 600000);
             if (output.Length > 1200) output = output.Substring(output.Length - 1200);
             foreach (var line in output.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(10))
                 Log("    " + line.TrimEnd());
             if (code != 0) { fail.Add(p.Name); continue; }
-            if (!string.IsNullOrWhiteSpace(names))
-            {
-                Log($"[插件] 重新解析「{p.Name}」的 git / 最新插件…");
-                var (code2, output2) = RunCapture("cmd.exe", $"/c pnpm update {names}", p.Dir, 600000);
-                if (output2.Length > 800) output2 = output2.Substring(output2.Length - 800);
-                foreach (var line in output2.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(8))
-                    Log("    " + line.TrimEnd());
-                if (code2 != 0) { fail.Add(p.Name + "(重解析)"); continue; }
-            }
+            Log($"[插件] 重新解析「{p.Name}」的可更新插件（含 git 源）…");
+            var (code2, output2) = RunCapture("cmd.exe", $"/c pnpm update {names}", p.Dir, 600000);
+            if (output2.Length > 800) output2 = output2.Substring(output2.Length - 800);
+            foreach (var line in output2.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(8))
+                Log("    " + line.TrimEnd());
+            if (code2 != 0) { fail.Add(p.Name + "(重解析)"); continue; }
             okCount++;
         }
-        return (fail.Count == 0,
-            fail.Count == 0
-                ? $"插件更新完成：{okCount} 个 profile 全部成功。重启 dsh 后生效。"
-                : $"插件更新完成 {okCount}/{profiles.Count}，失败：{string.Join("、", fail)}（详见运行日志）。");
+        var head = fail.Count == 0
+            ? $"插件更新完成：{okCount} 个 profile 全部成功"
+            : $"插件更新完成 {okCount}/{profiles.Count}，失败：{string.Join("、", fail)}（详见运行日志）";
+        if (skipped.Count > 0)
+            head += $"；已跳过无可更新项：{string.Join("、", skipped)}";
+        return (fail.Count == 0, head + "。重启 dsh 后生效。");
+    }
+
+    /// <summary>
+    /// 判断一个依赖声明是否存在 pnpm update 可作用的空间：
+    /// 精确版本（含 prerelease）、file:/link: 本地包、钉死 tag 或 commit 的 git 源都无可更新项；
+    /// 语义化 range（^ ~ >= *）与未钉 ref 的 git 源才可更新。
+    /// </summary>
+    public static bool SpecUpdatable(string spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec)) return false;
+        var s = spec.Trim();
+        if (s.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+            || s.StartsWith("link:", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (s.StartsWith("github:", StringComparison.OrdinalIgnoreCase)
+            || s.StartsWith("git+", StringComparison.OrdinalIgnoreCase)
+            || s.Contains("github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            var hash = s.IndexOf('#');
+            if (hash < 0) return true;
+            var refPart = s[(hash + 1)..];
+            return !Regex.IsMatch(refPart, @"^(?:[0-9a-fA-F]{7,40}|v?\d+(?:\.\d+)+.*)$");
+        }
+        return !Regex.IsMatch(s, @"^\d+\.\d+\.\d+(?:[-+][\w.]+)?$");
     }
 
     static string Quote(string s) =>
