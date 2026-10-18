@@ -46,7 +46,7 @@ public partial class MainWindow : Window
     bool desktopRunning;
     bool desktopInstalled;
     DateTime lastRemoteRefresh;
-    readonly string[] pageNames = { "服务总览", "桌面版", "插件管理", "版本与备份", "远程连接", "启动设置", "数据与路径", "Freebuff", "诊断与日志" };
+    readonly string[] pageNames = { "服务总览", "桌面版", "插件管理", "版本与备份", "远程连接", "启动设置", "数据与路径", "Freebuff", "诊断与日志", "会话记录" };
 
     public MainWindow()
     {
@@ -56,6 +56,9 @@ public partial class MainWindow : Window
         upd = new UpdateService(cfg, svc, desktop, Log);
         freebuff = new FreebuffService(cfg.FreebuffDir, Log, cfg.FreebuffDocker);
         InitializeComponent();
+        SourceInitialized += (_, _) => RefreshMaterial();
+        SizeChanged += (_, _) => NavList.ItemContainerStyle = (Style)FindResource(ActualHeight < 720 ? "CompactNavItemStyle" : "NavItemStyle");
+        StateChanged += (_, _) => BrandMark.SetMotion(cfg.AnimateBrand && WindowState != WindowState.Minimized);
         RestoreWindow();
         LoadSettings();
         ReloadPlugins();
@@ -66,7 +69,7 @@ public partial class MainWindow : Window
         VersionText.Text = "v" + UpdateService.AppVersion();
         FreebuffPathsText.Text = cfg.FreebuffDir + "\n" + cfg.FreebuffDocker;
         ready = true;
-        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 8);
+        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 9);
         svc.StartLogTail(AppendLog);
         refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
         refreshTimer.Tick += async (_, _) => await RefreshAsync();
@@ -76,6 +79,8 @@ public partial class MainWindow : Window
             if (App.RenderDirectory != null)
             {
                 await RefreshAsync();
+                await RefreshHealthAsync();
+                await RefreshSessionsAsync();
                 await RenderCheck.CaptureAsync(this, App.RenderDirectory);
                 selfUpdating = true;
                 Close();
@@ -83,6 +88,8 @@ public partial class MainWindow : Window
             }
             refreshTimer.Start();
             await RefreshAsync();
+            _ = RefreshHealthAsync();
+            _ = RefreshSessionsAsync();
             var controlsReady = BtnStart.IsEnabled || BtnRestart.IsEnabled;
             if (cfg.CheckUpdatesOnLaunch)
             {
@@ -114,6 +121,7 @@ public partial class MainWindow : Window
         cfg.Theme = theme;
         var dictionaries = Application.Current.Resources.MergedDictionaries;
         dictionaries[0] = new ResourceDictionary { Source = new Uri($"Themes/{(theme == "light" ? "Light" : "Dark")}.xaml", UriKind.Relative) };
+        RefreshMaterial();
     }
 
     void ThemeToggle_Click(object sender, RoutedEventArgs e)
@@ -142,14 +150,15 @@ public partial class MainWindow : Window
     void NavList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ready) return;
-        var pages = new[] { PageSvc, PageDesktop, PagePlugins, PageUpdates, PagePhone, PageAdv, PageStore, PageFreebuff, PageLog };
+        var pages = new[] { PageSvc, PageDesktop, PagePlugins, PageUpdates, PagePhone, PageAdv, PageStore, PageFreebuff, PageLog, PageSessions };
         var selected = Math.Clamp(NavList.SelectedIndex, 0, pages.Length - 1);
         for (var index = 0; index < pages.Length; index++)
             pages[index].Visibility = index == selected ? Visibility.Visible : Visibility.Collapsed;
         BreadcrumbText.Text = "工作空间 / " + pageNames[selected];
         if (App.RenderDirectory == null) { cfg.LastPage = selected; cfg.Save(); }
-        if (selected == 2) RefreshBackups();
+        if (selected == 3) RefreshBackups();
         if (selected == 7 && App.RenderDirectory == null) _ = RefreshFreebuffAsync();
+        if (selected == 9 && App.RenderDirectory == null) _ = RefreshSessionsAsync();
     }
 
     void LoadSettings()
@@ -160,6 +169,8 @@ public partial class MainWindow : Window
         TglRequirePairing.IsChecked = cfg.RequirePairing;
         TglAutoTunnel.IsChecked = cfg.AutoTunnel;
         TglCompat.IsChecked = cfg.BrowserCompatibilityPatch;
+        TglGlass.IsChecked = cfg.LiquidGlass;
+        TglBrandMotion.IsChecked = cfg.AnimateBrand;
         PortBox.Text = cfg.Port.ToString();
         StartupTimeoutBox.Text = cfg.StartupTimeoutSeconds.ToString();
         UpdateTimeoutBox.Text = cfg.UpdateTimeoutMinutes.ToString();
@@ -258,6 +269,7 @@ public partial class MainWindow : Window
         if (busy) return;
         busy = true;
         await StopPluginCheckAsync();
+        await StopHealthCheckAsync();
         taskCancellation = new();
         TaskPanel.Visibility = Visibility.Visible;
         TaskTitle.Text = title;
@@ -300,6 +312,7 @@ public partial class MainWindow : Window
             RefreshVersions();
             RefreshBackups();
             await RefreshAsync();
+            _ = RefreshHealthAsync();
             if (closingAfterTask) Close();
             else if (reloadPlugins && cfg.CheckUpdatesOnLaunch)
                 _ = CheckPluginsInUiAsync(plugins.Where(plugin => plugin.Profile == "web").ToList());
@@ -337,7 +350,11 @@ public partial class MainWindow : Window
     async void BtnRestart_Click(object sender, RoutedEventArgs e)
         => await RunTaskAsync("重启 DSH", async cancellation => await Task.Run(() => svc.RestartAsync(cancellation)));
     void BtnOpenUi_Click(object sender, RoutedEventArgs e) => svc.OpenUi();
-    void BtnDiagnostics_Click(object sender, RoutedEventArgs e) => NavList.SelectedIndex = 8;
+    void BtnDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        DiagnosticTabs.SelectedIndex = 0;
+        NavList.SelectedIndex = 8;
+    }
     void BtnCancelTask_Click(object sender, RoutedEventArgs e)
     {
         taskCancellation?.Cancel();
@@ -369,6 +386,7 @@ public partial class MainWindow : Window
             ? selectedProfile : ProfileFilter.Items.Contains("web") ? "web" : "全部 Profile";
         ApplyPluginFilter();
         OverviewPlugins.Text = $"web · {plugins.Count(plugin => plugin.Profile == "web" && !plugin.IsIndirect)} 入口";
+        RefreshComparison();
     }
 
     void ApplyPluginFilter()
@@ -380,6 +398,7 @@ public partial class MainWindow : Window
             && (plugin.Name + " " + plugin.Source + " " + plugin.Spec + " " + plugin.Installed + " " + plugin.Status).Contains(query, StringComparison.OrdinalIgnoreCase)
             && MatchesPluginStatus(plugin, PluginStatusFilter.SelectedIndex)).ToList();
         PluginGrid.ItemsSource = visible;
+        PluginEmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         PluginStatText.Text = $"{visible.Count} 项 · {visible.Count(plugin => plugin.IsIndirect)} 子包 · {visible.Count(plugin => plugin.HasUpdate)} 有更新 · {visible.Count(plugin => plugin.SourceIssue.Length > 0)} 来源提示";
         UpdateSelectedCount();
     }
@@ -471,7 +490,7 @@ public partial class MainWindow : Window
     {
         var selected = plugins.Where(plugin => plugin.Selected).ToList();
         if (selected.Count == 0 || !ConfirmMaintenance("更新所选插件", selected.Select(plugin =>
-            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"已安装 {plugin.Installed} → 声明 {plugin.Spec}")))) return;
+            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"已安装 {plugin.Installed} → 声明 {plugin.Spec}")), selected.Select(plugin => plugin.Profile))) return;
         await RunTaskAsync("更新插件", async cancellation =>
             await Task.Run(() => upd.UpdatePluginsAsync(selected, Progress, cancellation)));
     }
@@ -486,7 +505,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
         var target = dialog.Value.Trim();
         if (!UpdateService.ValidSpec(target)) { PluginHintText.Text = "目标版本无效；不接受本地路径或命令。"; return; }
-        if (!ConfirmMaintenance("指定插件版本", new[] { new PlannedChange(plugin.Name, $"{plugin.Installed} → {target}") })) return;
+        if (!ConfirmMaintenance("指定插件版本", new[] { new PlannedChange(plugin.Name, $"{plugin.Installed} → {target}") }, new[] { plugin.Profile })) return;
         await RunTaskAsync("更新 " + plugin.Name, async cancellation =>
             await Task.Run(() => upd.UpdatePluginsAsync(new[] { plugin }, Progress, cancellation, target)));
     }
@@ -536,8 +555,15 @@ public partial class MainWindow : Window
             await Task.Run(() => upd.SynchronizeCompanionsAsync(Progress, cancellation)));
     }
 
-    bool ConfirmMaintenance(string title, IEnumerable<PlannedChange> changes)
-        => new UpdatePreviewWindow(title, changes, running, cfg.RestartAfterUpdate) { Owner = this }.ShowDialog() == true;
+    bool ConfirmMaintenance(string title, IEnumerable<PlannedChange> changes, IEnumerable<string> profiles = null)
+        => new UpdatePreviewWindow(title, changes, running, cfg.RestartAfterUpdate,
+            MaintenanceImpact(profiles ?? new[] { "web" }, running, desktopRunning, cfg.RestartAfterUpdate)) { Owner = this }.ShowDialog() == true;
+
+    internal static string MaintenanceImpact(IEnumerable<string> profiles, bool webRunning, bool desktopRunning, bool restart)
+        => string.Join("\n", profiles.Distinct().Select(profile => profile == "desktop"
+            ? "桌面版：" + (desktopRunning ? restart ? "暂时停止，完成后恢复。" : "停止后保持停止。" : "维护后保持停止。") + "维护期间会启动官方桌面版验证。"
+            : profile == "web" ? "Web 服务：" + (webRunning ? restart ? "暂时停止，完成后恢复。" : "停止后保持停止。" : "维护后保持停止。")
+            : profile + "：检查静态配置组合。"));
 
     async Task CheckAppAsync()
     {
@@ -594,7 +620,8 @@ public partial class MainWindow : Window
     async void BtnRecoverMaintenance_Click(object sender, RoutedEventArgs e)
     {
         if (HistoryList.SelectedItem is not MaintenanceRecord record || !record.NeedsRecovery) return;
-        if (!ConfirmMaintenance("恢复中断的依赖维护", record.Backups.Select(backup => new PlannedChange(backup.Directory, backup.Display)))) return;
+        if (!ConfirmMaintenance("恢复中断的依赖维护", record.Backups.Select(backup => new PlannedChange(backup.Directory, backup.Display)),
+            UpdateService.MaintenanceProfiles(record.Backups.Select(backup => backup.Directory), svc.HomeBase, cfg.DshAppDir))) return;
         await RunTaskAsync("恢复中断任务", async cancellation =>
             await Task.Run(() => upd.RecoverMaintenanceAsync(record, Progress, cancellation)));
     }
@@ -641,9 +668,10 @@ public partial class MainWindow : Window
                 var bind = svc.GetBindAddress(cfg.Port);
                 var host = svc.DisplayHost();
                 var tailscale = DateTime.UtcNow - lastRemoteRefresh > TimeSpan.FromSeconds(20) ? svc.GetTsState() : null;
-                return (bind, host, tailscale, phase: svc.RuntimePhase());
+                return (bind, host, tailscale, phase: svc.RuntimePhase(), desktop: desktop.Status());
             });
             running = state.bind != null;
+            ApplyDesktopStatus(state.desktop);
             activeBind = state.bind;
             var label = svc.IsStarting ? "启动中" : state.phase == "restarting" ? "重启接续中" : running ? "运行中" : string.IsNullOrEmpty(svc.LastFailure) ? "已停止" : "启动失败";
             SidebarStatus.Text = label;
@@ -670,7 +698,7 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception exception) { BindText.Text = exception.Message; }
-        finally { RefreshDesktopStatus(); refreshing = false; }
+        finally { refreshing = false; }
     }
 
     async void BtnTsFix_Click(object sender, RoutedEventArgs e)
@@ -698,7 +726,11 @@ public partial class MainWindow : Window
 
     void RefreshDesktopStatus()
     {
-        var status = desktop.Status();
+        ApplyDesktopStatus(desktop.Status());
+    }
+
+    void ApplyDesktopStatus(DesktopStatus status)
+    {
         desktopInstalled = status.Installed;
         desktopRunning = status.Running;
         var desktopPlugins = plugins.Where(plugin => plugin.Profile == "desktop").ToList();
@@ -776,7 +808,7 @@ public partial class MainWindow : Window
             DesktopCheckText.Text = "无法生成同步计划：" + CommandRunner.Redact(error.Message);
             return;
         }
-        if (!ConfirmMaintenance("从 Web 同步桌面配置", changes)) return;
+        if (!ConfirmMaintenance("从 Web 同步桌面配置", changes, new[] { "desktop" })) return;
         await RunTaskAsync("同步桌面版配置", async cancellation =>
             await Task.Run(() => upd.SynchronizeDesktopFromWebAsync(Progress, cancellation)));
         ReloadPlugins();
@@ -907,7 +939,7 @@ public partial class MainWindow : Window
     void OnClosing(object sender, CancelEventArgs e)
     {
         if (busy) { e.Cancel = true; closingAfterTask = true; taskCancellation?.Cancel(); return; }
-        if (pluginCheckTask is { IsCompleted: false } || !versionChecks.IsCompleted)
+        if (pluginCheckTask is { IsCompleted: false } || !versionChecks.IsCompleted || !healthCheckTask.IsCompleted || !sessionHistoryTask.IsCompleted)
         {
             e.Cancel = true;
             if (!joiningReadChecks) { joiningReadChecks = true; _ = JoinReadChecksAndCloseAsync(); }
@@ -942,7 +974,7 @@ public partial class MainWindow : Window
     async Task JoinReadChecksAndCloseAsync()
     {
         readCancellation.Cancel();
-        await Task.WhenAll(StopPluginCheckAsync(), versionChecks);
+        await Task.WhenAll(StopPluginCheckAsync(), StopHealthCheckAsync(), versionChecks, sessionHistoryTask);
         Close();
     }
 }

@@ -36,12 +36,14 @@ public sealed class DesktopService
     public DesktopStatus Status()
     {
         var processes = OwnedProcesses().ToList();
+        var count = processes.Count;
+        foreach (var process in processes) process.Dispose();
         var version = Installed ? FileVersionInfo.GetVersionInfo(Executable).FileVersion : "";
         var crash = Directory.Exists(LogDirectory)
             ? Directory.GetFiles(LogDirectory, "crash-*-host.log").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
             : null;
-        return new(Installed, processes.Count > 0, version, Executable, ProfileDirectory, DataDirectory,
-            processes.Count, crash ?? "", TaskLedgerOwner());
+        return new(Installed, count > 0, version, Executable, ProfileDirectory, DataDirectory,
+            count, crash ?? "", TaskLedgerOwner());
     }
 
     public string TaskLedgerOwner()
@@ -53,7 +55,9 @@ public sealed class DesktopService
             var pid = document.RootElement.TryGetProperty("pid", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.Number
                 ? value.GetInt32() : 0;
             if (pid <= 0) return "未知";
-            if (OwnedProcesses().Any(process => process.Id == pid)) return "桌面版";
+            var owned = OwnedProcesses().ToList();
+            try { if (owned.Any(process => process.Id == pid)) return "桌面版"; }
+            finally { foreach (var candidate in owned) candidate.Dispose(); }
             var webPid = svc.GetPidOnPort(cfg.Port);
             if (webPid == pid) return "Web 端";
             using var process = Process.GetProcessById(pid);
@@ -66,8 +70,21 @@ public sealed class DesktopService
         }
     }
 
-    internal IEnumerable<Process> OwnedProcesses() => Process.GetProcessesByName("DeepSeek Harness")
-        .Where(process => StringsEqual(ProcessPath(process), Executable));
+    internal IEnumerable<Process> OwnedProcesses()
+    {
+        foreach (var process in Process.GetProcessesByName("DeepSeek Harness"))
+        {
+            if (StringsEqual(ProcessPath(process), Executable)) yield return process;
+            else process.Dispose();
+        }
+    }
+
+    bool IsRunning()
+    {
+        var owned = OwnedProcesses().ToList();
+        try { return owned.Count > 0; }
+        finally { foreach (var process in owned) process.Dispose(); }
+    }
 
     static string ProcessPath(Process process)
     {
@@ -91,10 +108,10 @@ public sealed class DesktopService
     public async Task<(bool ok, string message)> StartAsync()
     {
         if (!Installed) return (false, "找不到桌面版程序，请先安装或检查路径。");
-        if (OwnedProcesses().Any()) return (true, "桌面版已在运行。");
+        if (IsRunning()) return (true, "桌面版已在运行。");
         try
         {
-            var process = Process.Start(new ProcessStartInfo(Executable)
+            using var process = Process.Start(new ProcessStartInfo(Executable)
             {
                 WorkingDirectory = cfg.DshDesktopDir, UseShellExecute = true,
             });
@@ -129,13 +146,15 @@ public sealed class DesktopService
         {
             foreach (var process in processes)
             {
-                if (!process.HasExited) process.Kill(true);
+                try { if (!process.HasExited) process.Kill(true); }
+                catch (InvalidOperationException) { /* A parent may already have ended this child. */ }
             }
             foreach (var process in processes) await process.WaitForExitAsync();
             log?.Invoke($"桌面版已停止，共结束 {processes.Count} 个进程。");
             return (true, "桌面版已停止。");
         }
         catch (Exception error) { return (false, "桌面版停止失败：" + error.Message); }
+        finally { foreach (var process in processes) process.Dispose(); }
     }
 
     public async Task<(bool ok, string message)> RestartAsync()
@@ -154,10 +173,16 @@ public sealed class DesktopService
     {
         progress?.Invoke("正在启动官方桌面版做启动验证…");
         var start = await StartAsync();
-        if (!start.ok) throw new InvalidOperationException(start.message);
-        cancellation.ThrowIfCancellationRequested();
-        var stop = await StopAsync();
-        if (!stop.ok) throw new InvalidOperationException(stop.message);
+        try
+        {
+            if (!start.ok) throw new InvalidOperationException(start.message);
+            cancellation.ThrowIfCancellationRequested();
+        }
+        finally
+        {
+            var stop = await StopAsync();
+            if (!stop.ok) throw new InvalidOperationException(stop.message);
+        }
         progress?.Invoke("官方桌面版启动验证通过。");
     }
 

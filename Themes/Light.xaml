@@ -1,6 +1,10 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!-- app-shell-ui · Light tokens -->
+    <SolidColorBrush x:Key="WindowMaterialBrush" Color="#B8F3F6FA"/>
+    <SolidColorBrush x:Key="SidebarGlassBrush" Color="#94FFFFFF"/>
+    <LinearGradientBrush x:Key="ToolbarGlassBrush" StartPoint="0,0" EndPoint="0.3,1"><GradientStop Color="#DCFFFFFF"/><GradientStop Color="#80FFFFFF" Offset="1"/></LinearGradientBrush>
+    <LinearGradientBrush x:Key="GlassStrokeBrush" StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#EEFFFFFF"/><GradientStop Color="#5094A2B5" Offset="0.5"/><GradientStop Color="#CCFFFFFF" Offset="1"/></LinearGradientBrush>
     <SolidColorBrush x:Key="BgAppBrush" Color="#F4F5F7"/>
     <SolidColorBrush x:Key="BgSidebarBrush" Color="#EEF0F3"/>
     <SolidColorBrush x:Key="BgSurfaceBrush" Color="#FFFFFF"/>
@@ -9,7 +13,9 @@
     <SolidColorBrush x:Key="BgSelectedBrush" Color="#E0EFFF"/>
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1C1C1E"/>
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#636366"/>
-    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#8E8E93"/>
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#73737A"/>
+    <SolidColorBrush x:Key="SuccessTextBrush" Color="#217843"/>
+    <SolidColorBrush x:Key="WarningTextBrush" Color="#986100"/>
     <SolidColorBrush x:Key="PrimaryBrush" Color="#007AFF"/>
     <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#1A89FF"/>
     <SolidColorBrush x:Key="PrimaryPressedBrush" Color="#0068DE"/>

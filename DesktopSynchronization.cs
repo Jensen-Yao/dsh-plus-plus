@@ -19,7 +19,7 @@ public partial class UpdateService
             if (dependency.Key.StartsWith("@deepseek-ai/") || DesktopIgnoredDependencies.Contains(dependency.Key, StringComparer.OrdinalIgnoreCase)) continue;
             var installed = InstalledVersion(webDirectory, dependency.Key);
             var target = dependency.Value!.GetValue<string>();
-            if (installed.Length > 0 && target[0] is '^' or '~' or '>' or '=' || System.Text.RegularExpressions.Regex.IsMatch(target, @"^\d+\.\d+\.\d+"))
+            if (installed.Length > 0 && System.Text.RegularExpressions.Regex.IsMatch(target, @"^(?:[~^>=<*\d]|latest$)"))
                 target = installed;
             dependencies[dependency.Key] = target;
             var current = desktop["dependencies"]?[dependency.Key]?.GetValue<string>() ?? "";
@@ -70,40 +70,29 @@ public partial class UpdateService
         var desktop = Profiles().FirstOrDefault(profile => profile.Name == "desktop");
         if (web == null || desktop == null) return (false, "需要同时存在 web 与 desktop profile。");
         if (!desktopService.Installed) return (false, "未找到官方桌面版程序。");
-        var desktopWasRunning = desktopService.Status().Running;
-        if (desktopWasRunning)
-        {
-            progress?.Invoke("正在停止桌面版…");
-            var stop = await desktopService.StopAsync();
-            if (!stop.ok) return stop;
-        }
+        var preview = BuildDesktopSyncPlan(web.Dir, desktop.Dir);
+        if (!preview.HasChanges && File.ReadAllText(Path.Combine(desktop.Dir, "cordis.patch.yml")) == preview.Patch
+            && preview.Manifest["dependencies"]!.AsObject().All(item =>
+                InstalledVersion(web.Dir, item.Key) == InstalledVersion(desktop.Dir, item.Key)
+                && InstalledVersion(web.Dir, item.Key).Length > 0))
+            return (true, "桌面版已与 web 配置一致，未停止服务或重新安装依赖。");
         var result = await MaintainAsync(new() { desktop.Dir }, "同步 web 配置到桌面版", async () =>
         {
             var plan = BuildDesktopSyncPlan(web.Dir, desktop.Dir);
-            if (!plan.HasChanges && File.ReadAllText(Path.Combine(desktop.Dir, "cordis.patch.yml")) == plan.Patch)
-            {
-                progress?.Invoke("桌面版已与 web 配置一致。");
-                return;
-            }
             File.WriteAllText(Path.Combine(desktop.Dir, "package.json"), plan.Manifest.ToJsonString() + Environment.NewLine);
             File.WriteAllText(Path.Combine(desktop.Dir, "cordis.patch.yml"), plan.Patch);
             var install = await PackageAsync("pnpm", new[] { "install", "--reporter=append-only", "--config.minimumReleaseAge=0" },
                 desktop.Dir, progress, cancellation);
             if (!install.Ok) throw new InvalidOperationException(install.Cancelled ? "同步已取消" : install.TimedOut
                 ? "安装超时" : "桌面版依赖安装失败：" + CommandRunner.Redact(install.Output));
-            foreach (var change in plan.DependencyChanges.Where(change => change.Web != "<移除>"))
+            foreach (var dependency in plan.Manifest["dependencies"]!.AsObject())
             {
-                var expected = InstalledVersion(web.Dir, change.Name);
-                var actual = InstalledVersion(desktop.Dir, change.Name);
+                var expected = InstalledVersion(web.Dir, dependency.Key);
+                var actual = InstalledVersion(desktop.Dir, dependency.Key);
                 if (expected.Length > 0 && actual != expected)
-                    throw new InvalidOperationException($"{change.Name} 未与 web 同步：web {expected}，desktop {actual}。");
+                    throw new InvalidOperationException($"{dependency.Key} 未与 web 同步：web {expected}，desktop {actual}。");
             }
-        }, progress, cancellation, includeDshService: false, profileName: "desktop");
-        if (desktopWasRunning)
-        {
-            var start = await desktopService.StartAsync();
-            result = result.ok ? start : (false, result.msg + (start.ok ? "\n桌面版已恢复运行。" : "\n桌面版恢复启动失败：" + start.message));
-        }
+        }, progress, cancellation);
         return result;
     }
 }

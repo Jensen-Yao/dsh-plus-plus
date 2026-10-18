@@ -220,7 +220,7 @@ public partial class UpdateService
         return profiles;
     }
 
-    static string InstalledVersion(string profile, string package)
+    internal static string InstalledVersion(string profile, string package)
     {
         try
         {

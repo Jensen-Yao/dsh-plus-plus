@@ -14,6 +14,9 @@ public static partial class SelfCheck
         Check("runtime host is available even after exe-only upgrades", File.Exists(BundledAssets.Get("scripts/runtime-host.mjs")));
         Check("updater script is available even after exe-only upgrades", File.Exists(BundledAssets.Get("scripts/apply-update.ps1")));
         Check("compatibility source is available even after exe-only upgrades", !string.IsNullOrEmpty(FrontendPatch.PolyfillSource()));
+        var runtimeAsset = BundledAssets.Get("scripts/runtime-host.mjs");
+        Check("runtime preload never depends on the build or install directory", runtimeAsset.StartsWith(Path.Combine(AppConfig.ConfigDir, "runtime-assets"), StringComparison.OrdinalIgnoreCase)
+            && !runtimeAsset.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase));
         Check("pinned prerelease is preserved", !UpdateService.SpecUpdatable("0.2.1-rc.2"));
         Check("pinned GitHub tag is preserved", !UpdateService.SpecUpdatable("github:Jensen-Yao/dsh-model-palette#v0.16.3"));
         Check("local source is preserved", !new PluginItem { Name = "bridge", Spec = "link:C:/source" }.CanUpdate);
@@ -107,7 +110,7 @@ public static partial class SelfCheck
                 portProbe.Start();
                 var port = ((System.Net.IPEndPoint)portProbe.LocalEndpoint).Port;
                 portProbe.Stop();
-                var config = new AppConfig { DshAppDir = app, DshHome = home, Mode = "local", Port = port };
+                var config = new AppConfig { DshAppDir = app, DshHome = home, DshDesktopDir = Path.Combine(fixture, "missing-desktop"), Mode = "local", Port = port };
                 using var service = new DshService(config);
                 var updates = new UpdateService(config, service);
                 var plugin = updates.Profiles().Single().Plugins.Single(plugin => plugin.Name == "example-plugin");
@@ -176,6 +179,7 @@ public static partial class SelfCheck
                 var unlockedRestore = await updates.RestoreBackupAsync(unlockedBackup);
                 Check("unlocked profile restores without npm ci", unlockedRestore.ok && File.ReadAllText(Path.Combine(unlocked, "npm-commands.log")).Contains("install")
                     && !File.ReadAllText(Path.Combine(unlocked, "npm-commands.log")).Contains("\"ci\""));
+                await RunHealthRegressionsAsync(Check, fixture, home, updates, config);
             }
             catch (Exception exception) { Check("maintenance fixture completes: " + exception, false); }
             finally
@@ -185,6 +189,7 @@ public static partial class SelfCheck
             }
         }).GetAwaiter().GetResult();
         Task.Run(() => RunRealPackageCheckAsync(Check)).GetAwaiter().GetResult();
+        Task.Run(() => RunSessionHistoryChecksAsync(Check)).GetAwaiter().GetResult();
         File.WriteAllText(Path.Combine(Path.GetTempPath(), "dsh-control-self-test.txt"), report.ToString());
         return failures == 0 ? 0 : 1;
     }

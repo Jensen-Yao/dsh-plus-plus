@@ -8,6 +8,9 @@ namespace DshControl;
 
 public class AppConfig
 {
+    public bool LiquidGlass { get; set; } = true;
+    public bool AnimateBrand { get; set; } = true;
+    public int SessionHistoryLimit { get; set; } = 500;
     public string DshAppDir { get; set; } = @"F:\DeepSeek harness\dsh-app";
     public string DshDesktopDir { get; set; } = @"F:\dsh-desktop";
     public int Port { get; set; } = 3080;

@@ -72,6 +72,27 @@ public partial class App : Application
             Shutdown(result.Item1 ? 0 : 1);
             return;
         }
+        if (e.Args.Length > 0 && e.Args[0] == "--session-history")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var result = System.Threading.Tasks.Task.Run(() => SessionHistory.ReadAsync(service.HomeBase, config.SessionHistoryLimit)).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "session-history-summary.json"),
+                System.Text.Json.JsonSerializer.Serialize(new { result.Total, Displayed = result.Items.Count, Cached = result.Items.Count(item => item.Cached), result.Unreadable }));
+            Shutdown();
+            return;
+        }
+        if (e.Args.Length > 0 && e.Args[0] == "--health")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var report = System.Threading.Tasks.Task.Run(() => HealthChecks.RunAsync(config, service, new UpdateService(config, service))).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "health-report.txt"), report.Export());
+            Shutdown(report.Findings.Any(item => item.Level == "错误") ? 1 : 0);
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--check-plugins")
         {
             var config = AppConfig.Load();
@@ -93,7 +114,7 @@ public partial class App : Application
         }
         for (var i = 0; i < e.Args.Length - 1; i++)
             if (e.Args[i] == "--page" && int.TryParse(e.Args[i + 1], out var p))
-                StartPage = Math.Clamp(p, 0, 8);
+                StartPage = Math.Clamp(p, 0, 9);
         for (var i = 0; i < e.Args.Length - 1; i++)
             if (e.Args[i] == "--render-check") RenderDirectory = e.Args[i + 1];
         UiCheck = Array.IndexOf(e.Args, "--ui-check") >= 0;

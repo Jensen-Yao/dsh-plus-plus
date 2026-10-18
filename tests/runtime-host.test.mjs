@@ -108,6 +108,7 @@ test(
     const f = await fixture();
     t.after(() => f.stop());
     const original = f.state().pid;
+    assert.equal(f.state().hostScript, hostScript);
     const response = await request(f.port, '/', { 'X-Forwarded-For': 'attacker', Host: 'original.example' });
     const echoed = JSON.parse(response.body);
     assert.equal(echoed.headers.host, 'original.example');

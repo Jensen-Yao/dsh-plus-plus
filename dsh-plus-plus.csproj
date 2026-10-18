@@ -9,7 +9,7 @@
     <RootNamespace>DshControl</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
-    <Version>3.3.0</Version>
+    <Version>3.4.0</Version>
     <Description>dsh++ — DeepSeek Harness 桌面控制台（dsh-plugin）</Description>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
@@ -20,6 +20,7 @@
     <EmbeddedResource Include="scripts\runtime-host.mjs" LogicalName="DshControl.assets.runtime-host.mjs" />
     <EmbeddedResource Include="scripts\apply-update.ps1" LogicalName="DshControl.assets.apply-update.ps1" />
     <EmbeddedResource Include="compat-polyfill.js" LogicalName="DshControl.assets.compat-polyfill.js" />
+    <EmbeddedResource Include="Assets\OfficialDshMark.LICENSE.txt" LogicalName="DshControl.assets.OfficialDshMark.LICENSE.txt" />
     <Content Include="scripts\*.mjs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="scripts\apply-update.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Remove="icon-gen\**" />

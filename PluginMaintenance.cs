@@ -205,14 +205,18 @@ public partial class UpdateService
     }
 
     async Task<(bool ok, string msg)> MaintainAsync(List<string> directories, string label, Func<Task> change,
-        Action<string> progress, CancellationToken cancellation, bool recovery = false, Func<Task> beforeBackup = null,
-        bool includeDshService = true, string profileName = "web")
+        Action<string> progress, CancellationToken cancellation, bool recovery = false, Func<Task> beforeBackup = null)
     {
+        var affected = MaintenanceProfiles(directories, svc.HomeBase, cfg.DshAppDir);
         if (!await svc.Maintenance.WaitAsync(0, cancellation)) return (false, "其他启动或维护任务正在进行。");
         var backups = new List<MaintenanceBackup>();
         var wasRunning = false;
         var stopped = false;
         var changed = false;
+        var touchesWeb = affected.Contains("web");
+        var touchesDesktop = affected.Contains("desktop");
+        var desktopWasRunning = false;
+        var desktopStopped = false;
         Busy = true;
         FileStream operationLock = null;
         MaintenanceRecord record = null;
@@ -242,7 +246,8 @@ public partial class UpdateService
             record = new MaintenanceRecord { Label = label, Backups = backups };
             activeRecord = record;
             SaveRecord(record);
-            wasRunning = includeDshService && svc.IsDshRunning();
+            wasRunning = touchesWeb && svc.IsDshRunning();
+            desktopWasRunning = touchesDesktop && desktopService.Status().Running;
             foreach (var directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 backups.Add(CreateBackup(directory, label));
@@ -255,19 +260,32 @@ public partial class UpdateService
                 if (!stop.ok) throw new InvalidOperationException(stop.message);
                 stopped = true;
             }
+            if (desktopWasRunning)
+            {
+                Stage("正在停止桌面版");
+                var stop = await desktopService.StopAsync();
+                if (!stop.ok) throw new InvalidOperationException(stop.message);
+                desktopStopped = true;
+            }
             cancellation.ThrowIfCancellationRequested();
             Stage("正在修改依赖");
             changed = true;
             await change();
             Stage("正在检查配置组合");
-            await ValidateAsync(cancellation, profileName);
-            if (wasRunning && includeDshService && cfg.RestartAfterUpdate)
+            foreach (var profile in affected) await ValidateAsync(cancellation, profile);
+            if (desktopWasRunning && cfg.RestartAfterUpdate)
+            {
+                Stage("正在恢复桌面版");
+                var start = await desktopService.StartAsync();
+                if (!start.ok) throw new InvalidOperationException(start.message);
+            }
+            if (wasRunning && cfg.RestartAfterUpdate)
             {
                 Stage("正在启动并验证服务");
                 var start = await svc.StartCoreAsync(cancellation);
                 if (!start.ok) throw new InvalidOperationException(start.message);
             }
-            var success = label + (wasRunning && cfg.RestartAfterUpdate ? "完成，服务已恢复。" : "完成，备份已保留。");
+            var success = label + ((wasRunning || desktopWasRunning) && cfg.RestartAfterUpdate ? "完成，原运行端已恢复。" : "完成，备份已保留。");
             Complete("完成", success);
             return (true, success);
         }
@@ -280,8 +298,16 @@ public partial class UpdateService
                 Stage("正在恢复更新前依赖", required: false);
                 try
                 {
-                    var stop = await svc.StopCoreAsync();
-                    if (!stop.ok) throw new InvalidOperationException(stop.message);
+                    if (touchesWeb)
+                    {
+                        var stop = await svc.StopCoreAsync();
+                        if (!stop.ok) throw new InvalidOperationException(stop.message);
+                    }
+                    if (touchesDesktop)
+                    {
+                        var stop = await desktopService.StopAsync();
+                        if (!stop.ok) throw new InvalidOperationException(stop.message);
+                    }
                     foreach (var backup in backups.AsEnumerable().Reverse()) await RestoreFilesAsync(backup, progress);
                     message += "\n已恢复更新前依赖。";
                 }
@@ -297,10 +323,32 @@ public partial class UpdateService
                 var start = await svc.StartCoreAsync();
                 message += start.ok ? "\n原服务已恢复。" : "\n原服务未能恢复：" + start.message;
             }
+            if (desktopWasRunning && desktopStopped)
+            {
+                var start = await desktopService.StartAsync();
+                message += start.ok ? "\n原桌面版已恢复。" : "\n原桌面版未能恢复：" + start.message;
+            }
             Complete(changed ? "已回滚" : "未修改", message);
             return (false, message);
         }
         finally { activeRecord = null; operationLock?.Dispose(); Busy = false; svc.Maintenance.Release(); }
+    }
+
+    /// <summary>Maps changed installation/profile directories to the hosts that own their dependencies.</summary>
+    internal static List<string> MaintenanceProfiles(IEnumerable<string> directories, string home, string installation)
+    {
+        var result = new List<string>();
+        var profiles = Path.GetFullPath(Path.Combine(home, "profiles"));
+        foreach (var directory in directories)
+        {
+            var full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+            if (string.Equals(full, Path.GetFullPath(installation).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                result.Add("web");
+            else if (string.Equals(Path.GetDirectoryName(full), profiles, StringComparison.OrdinalIgnoreCase))
+                result.Add(Path.GetFileName(full));
+            else throw new InvalidOperationException("恢复点不属于当前安装或 profile 目录：" + directory);
+        }
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     public Task<(bool ok, string msg)> RestoreBackupAsync(MaintenanceBackup backup, Action<string> progress = null,

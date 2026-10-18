@@ -44,8 +44,9 @@ public static class Diagnostics
             {
                 if (plugin.SourceIssue.Length > 0) report.AppendLine("  来源提示: " + plugin.Name + " · " + plugin.SourceIssue + " · " + plugin.ResolvedSource);
                 if (string.IsNullOrEmpty(plugin.Installed)) report.AppendLine("  未安装: " + plugin.Name);
-                if (plugin.IsCore && plugin.Installed != version)
-                    report.AppendLine($"  内核伴随包版本不同: {plugin.Name} {plugin.Installed} / DSH {version}");
+                var provided = plugin.IsCore ? UpdateService.InstalledVersion(cfg.DshAppDir, plugin.Name) : "";
+                if (profile.Name == "web" && provided.Length > 0 && plugin.Installed != provided)
+                    report.AppendLine($"  内核伴随包版本不同: {plugin.Name} {plugin.Installed} / 内核提供 {provided}");
                 var packageRoot = Path.Combine(profile.Dir, "node_modules", plugin.Name.Replace('/', Path.DirectorySeparatorChar));
                 var manifestPath = Path.Combine(packageRoot, "package.json");
                 if (!File.Exists(manifestPath)) continue;

@@ -89,7 +89,11 @@ public partial class DshService : IDisposable
 
     public bool IsDshRunning() => GetPidOnPort(Cfg.Port) > 0;
 
-    public string GetBindAddress(int port)
+    public string GetBindAddress(int port) => Listener(port).Bind;
+
+    public int GetPidOnPort(int port) => Listener(port).Pid;
+
+    (string Bind, int Pid) Listener(int port)
     {
         try
         {
@@ -102,50 +106,26 @@ public partial class DshService : IDisposable
             using var p = Process.Start(psi);
             var outp = p.StandardOutput.ReadToEnd();
             p.WaitForExit(5000);
-            string fallback = null;
-            var ownedPid = RecordedPid();
-            foreach (var line in outp.Split('\n'))
-            {
-                var m = Regex.Match(line, $@"\s*TCP\s+(\[[^\]]+\]|\S+):({port})\s+\S+\s+LISTENING\s+(\d+)");
-                if (!m.Success) continue;
-                var b = m.Groups[1].Value;
-                if (int.TryParse(m.Groups[3].Value, out var pid) && pid == ownedPid) return b.Trim('[', ']');
-                fallback ??= b.Trim('[', ']');
-            }
-            return fallback;
+            return SelectListener(outp, port, RecordedPid());
         }
         catch { }
-        return null;
+        return (null, 0);
     }
 
-    public int GetPidOnPort(int port)
+    /// <summary>Prefers a recorded backend, then loopback, before a remote relay or unrelated listener.</summary>
+    internal static (string Bind, int Pid) SelectListener(string output, int port, int ownedPid)
     {
-        try
+        (string Bind, int Pid) fallback = (null, 0), loopback = (null, 0);
+        foreach (var line in output.Split('\n'))
         {
-            var psi = new ProcessStartInfo("netstat.exe", "-ano -p tcp")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using var p = Process.Start(psi);
-            var outp = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(5000);
-            var ownedPid = RecordedPid();
-            var fallback = 0;
-            foreach (var line in outp.Split('\n'))
-            {
-                var m = Regex.Match(line, $@"\s*TCP\s+\S+:({port})\s+\S+\s+LISTENING\s+(\d+)");
-                if (m.Success && int.TryParse(m.Groups[2].Value, out var pid))
-                {
-                    if (pid == ownedPid) return pid;
-                    if (fallback == 0) fallback = pid;
-                }
-            }
-            return fallback;
+            var match = Regex.Match(line, $@"\s*TCP\s+(\[[^\]]+\]|\S+):{port}\s+\S+\s+LISTENING\s+(\d+)");
+            if (!match.Success || !int.TryParse(match.Groups[2].Value, out var pid)) continue;
+            var address = match.Groups[1].Value.Trim('[', ']');
+            if (pid == ownedPid) return (address, pid);
+            if (fallback.Pid == 0) fallback = (address, pid);
+            if (loopback.Pid == 0 && IPAddress.TryParse(address, out var ip) && IPAddress.IsLoopback(ip)) loopback = (address, pid);
         }
-        catch { }
-        return 0;
+        return loopback.Pid > 0 ? loopback : fallback;
     }
 
     int RecordedPid()

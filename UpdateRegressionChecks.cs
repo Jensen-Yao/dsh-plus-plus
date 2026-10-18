@@ -141,6 +141,7 @@ public static partial class SelfCheck
         var syncPlan = UpdateService.BuildDesktopSyncPlan(syncWeb, syncDesktop);
         var plannedDependencies = syncPlan.Manifest["dependencies"]!.AsObject();
         check("desktop sync pins web npm ranges to installed versions", plannedDependencies["range-plugin"]!.GetValue<string>() == "1.2.3");
+        check("desktop sync retains exact declaration when the web artifact is absent", plannedDependencies["shared-plugin"]!.GetValue<string>() == "1.0.0");
         check("desktop sync preserves Git declarations and excludes official shell dependencies",
             plannedDependencies["git-plugin"]!.GetValue<string>() == "github:owner/repo#v1.0.0"
             && plannedDependencies.ContainsKey("@deepseek-ai/ignored") == false && plannedDependencies.ContainsKey("electron") == false);

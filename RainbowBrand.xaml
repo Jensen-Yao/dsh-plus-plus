@@ -1,0 +1,16 @@
+<UserControl x:Class="DshControl.RainbowBrand"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="42" Height="36" IsHitTestVisible="False" AutomationProperties.Name="DeepSeek Harness 官方徽标">
+    <Viewbox Stretch="Uniform" Margin="2">
+        <Path Data="{StaticResource OfficialDshMark}" Stretch="Uniform" Width="40" Height="30">
+            <Path.Fill><LinearGradientBrush x:Name="Rainbow" StartPoint="0,0" EndPoint="1,1" SpreadMethod="Reflect">
+                <LinearGradientBrush.RelativeTransform><RotateTransform x:Name="Flow" CenterX="0.5" CenterY="0.5"/></LinearGradientBrush.RelativeTransform>
+                <GradientStop Color="#ED5B84" Offset="0"/><GradientStop Color="#F5AE4E" Offset="0.18"/>
+                <GradientStop Color="#50BF86" Offset="0.36"/><GradientStop Color="#30B6D2" Offset="0.52"/>
+                <GradientStop Color="#5487F5" Offset="0.7"/><GradientStop Color="#AB76DC" Offset="0.86"/>
+                <GradientStop Color="#ED5B84" Offset="1"/>
+            </LinearGradientBrush></Path.Fill>
+        </Path>
+    </Viewbox>
+</UserControl>

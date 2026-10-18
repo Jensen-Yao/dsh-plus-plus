@@ -68,6 +68,7 @@ if (!launchedAsHost) {
     outputClosed = false;
   const state = {
     hostPid: process.pid,
+    hostScript: fileURLToPath(import.meta.url),
     bin: plan.bin,
     bind: plan.bind,
     session,

@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 
 namespace DshControl;
 
-/// <summary>Supplies version-matched scripts when older updaters replace only the executable.</summary>
+/// <summary>Keeps versioned scripts alive independently of the controller installation and build directories.</summary>
 internal static class BundledAssets
 {
     static readonly Dictionary<string, string> Resources = new(StringComparer.Ordinal)
@@ -21,13 +21,6 @@ internal static class BundledAssets
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         var expected = buffer.ToArray();
-        var distributed = Path.Combine(AppContext.BaseDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
-        try
-        {
-            if (File.Exists(distributed) && File.ReadAllBytes(distributed).AsSpan().SequenceEqual(expected)) return distributed;
-        }
-        catch (IOException) { /* A locked installation falls back to the per-user asset cache. */ }
-        catch (UnauthorizedAccessException) { /* Read-only installations use the same per-user cache. */ }
         var digest = Convert.ToHexString(SHA256.HashData(expected));
         var destination = Path.Combine(AppConfig.ConfigDir, "runtime-assets", digest, relative.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
