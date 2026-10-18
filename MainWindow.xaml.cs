@@ -267,7 +267,7 @@ public partial class MainWindow : Window
         {
             Task.Run(() =>
             {
-                var (ok, msg) = upd.UpdateAllPlugins();
+                var (ok, msg) = upd.UpdateAllPlugins(m => Dispatcher.BeginInvoke(new Action(() => PluginHintText.Text = m)));
                 Log("[插件] 自动更新：" + msg);
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -337,7 +337,7 @@ public partial class MainWindow : Window
         DshUpdHint.Text = $"正在更新 dsh 到{label}（npm install，可能需要几分钟，详见运行日志）…";
         try
         {
-            var (ok, msg) = await Task.Run(() => upd.UpdateDsh(spec));
+            var (ok, msg) = await Task.Run(() => upd.UpdateDsh(spec, m => Dispatcher.BeginInvoke(new Action(() => DshUpdHint.Text = m))));
             DshUpdHint.Text = msg;
             if (ok)
             {
@@ -448,7 +448,7 @@ public partial class MainWindow : Window
         PluginHintText.Text = "正在更新插件（逐 profile 执行 pnpm update，详见运行日志）…";
         try
         {
-            var (ok, msg) = await Task.Run(() => upd.UpdateAllPlugins());
+            var (ok, msg) = await Task.Run(() => upd.UpdateAllPlugins(m => Dispatcher.BeginInvoke(new Action(() => PluginHintText.Text = m))));
             PluginHintText.Text = msg;
             Log("[插件] " + msg);
         }

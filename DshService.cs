@@ -248,6 +248,12 @@ public class DshService : IDisposable
             };
             psi.Environment["DSH_HOME"] = HomeBase;
             psi.Environment["DSH_AGENTS_HOME"] = AgentsBase;
+            // pnpm/npm 下载超时：dsh 进程及其子进程（含插件市场的更新）都继承，
+            // 避免 60 秒默认超时在大包 + 抖动网络下频繁失败
+            psi.Environment["npm_config_fetch_timeout"] = "900000";
+            psi.Environment["npm_config_fetch_retries"] = "5";
+            psi.Environment["npm_config_fetch_retry_mintimeout"] = "20000";
+            psi.Environment["npm_config_fetch_retry_maxtimeout"] = "120000";
             var dshProcess = Process.Start(psi);
             logOffset = File.Exists(DshLogPath) ? new FileInfo(DshLogPath).Length : 0;
             Log($"存储根: {HomeBase}");

@@ -64,6 +64,7 @@ public class UpdateService
             CreateNoWindow = true,
             WorkingDirectory = Directory.Exists(cwd) ? cwd : Path.GetTempPath(),
         };
+        ApplyFetchEnv(psi);
         try
         {
             using var p = Process.Start(psi);
@@ -78,6 +79,124 @@ public class UpdateService
             Task.WaitAll(new Task[] { so, se }, 3000);
             var text = (so.Result + Environment.NewLine + se.Result).Trim();
             return (p.ExitCode, text);
+        }
+        catch (Exception ex)
+        {
+            return (-1, ex.Message);
+        }
+    }
+
+    /// <summary>pnpm/npm 的下载超时与重试配置（大包 + 抖动网络默认 60 秒不够用）。</summary>
+    static void ApplyFetchEnv(ProcessStartInfo psi)
+    {
+        psi.Environment["npm_config_fetch_timeout"] = "900000";
+        psi.Environment["npm_config_fetch_retries"] = "5";
+        psi.Environment["npm_config_fetch_retry_mintimeout"] = "20000";
+        psi.Environment["npm_config_fetch_retry_maxtimeout"] = "120000";
+    }
+
+    static readonly Regex ProgressLine = new(
+        @"resolved\s+(\d+),\s*reused\s+(\d+),\s*downloaded\s+(\d+),\s*added\s+(\d+)",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// 流式执行 pnpm/npm 命令：边跑边解析 pnpm 的 Progress 行，
+    /// 每 15 秒回调一次心跳（计数器 / 用时 / 速度 / 预计剩余 / 卡住告警），
+    /// 让用户随时知道「到底在不在下载」。返回退出码与输出尾部。
+    /// </summary>
+    static (int code, string output) RunLive(string file, string args, string cwd, int timeoutMs, Action<string> onTick, Action<string> onLog)
+    {
+        var psi = new ProcessStartInfo(file, args)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = Directory.Exists(cwd) ? cwd : Path.GetTempPath(),
+        };
+        ApplyFetchEnv(psi);
+        try
+        {
+            using var p = Process.Start(psi);
+            if (p == null) return (-1, "无法启动进程");
+            var sb = new StringBuilder();
+            int resolved = -1, downloaded = -1, added = -1;
+            var samples = new List<(DateTime t, int d)>();
+            var stableResolved = -1; var stableTicks = 0;
+            var lastMove = DateTime.Now;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            void Feed(string line)
+            {
+                if (line.Length == 0) return;
+                lock (sb) sb.AppendLine(line);
+                var m = ProgressLine.Match(line);
+                if (!m.Success) return;
+                _ = int.TryParse(m.Groups[1].Value, out resolved);
+                _ = int.TryParse(m.Groups[3].Value, out downloaded);
+                _ = int.TryParse(m.Groups[4].Value, out added);
+                lastMove = DateTime.Now;
+            }
+
+            var outTask = Task.Run(async () =>
+            { string l; while ((l = await p.StandardOutput.ReadLineAsync()) != null) Feed(l); });
+            var errTask = Task.Run(async () =>
+            { string l; while ((l = await p.StandardError.ReadLineAsync()) != null) Feed(l); });
+
+            string Compose()
+            {
+                // 解析阶段结束后 resolved 稳定，可作下载总量上界估算
+                if (resolved == stableResolved) stableTicks++; else { stableResolved = resolved; stableTicks = 0; }
+                samples.Add((DateTime.Now, downloaded));
+                if (samples.Count > 5) samples.RemoveAt(0);
+                var head = $"下载中… 解析 {Math.Max(resolved, 0)} · 已下载 {Math.Max(downloaded, 0)} · 已装 {Math.Max(added, 0)} ｜ 用时 {(int)sw.Elapsed.TotalMinutes}m{sw.Elapsed.Seconds:d2}s";
+                if (samples.Count >= 2)
+                {
+                    var (t0, d0) = samples[0];
+                    var mins = Math.Max(0.02, (DateTime.Now - t0).TotalMinutes);
+                    var rate = (Math.Max(downloaded, 0) - d0) / mins;
+                    if (rate > 0.01)
+                    {
+                        head += $" ｜ 速度 {rate:F1} 包/分";
+                        if (stableTicks >= 3 && stableResolved > downloaded)
+                        {
+                            var eta = (stableResolved - Math.Max(downloaded, 0)) / rate;
+                            if (eta < 600) head += $" ｜ 预计还需约 {Math.Ceiling(eta)} 分钟";
+                        }
+                    }
+                }
+                if ((DateTime.Now - lastMove).TotalSeconds >= 90)
+                    head += " ｜ ⚠ 90 秒计数无进展（可能在下载大包或等待重试，配置了 15 分钟超时）";
+                return head;
+            }
+
+            var tickCount = 0;
+            using var timer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    tickCount++;
+                    var msg = Compose();
+                    onTick?.Invoke(msg);
+                    if (tickCount % 2 == 0) onLog?.Invoke("    " + msg); // 每 30 秒留一条到运行日志
+                }
+                catch { }
+            }, null, 15000, 15000);
+
+            if (!p.WaitForExit(timeoutMs))
+            {
+                try { p.Kill(true); } catch { }
+                return (-1, "命令超时（超过 " + timeoutMs / 60000 + " 分钟）");
+            }
+            Task.WaitAll(new Task[] { outTask, errTask }, 3000);
+            timer.Dispose();
+            string tail;
+            lock (sb)
+            {
+                var all = sb.ToString();
+                tail = all.Length > 1500 ? all.Substring(all.Length - 1500) : all;
+            }
+            return (p.ExitCode, tail.Trim());
         }
         catch (Exception ex)
         {
@@ -156,13 +275,13 @@ public class UpdateService
     static bool HasPrerelease(string v) => v.Trim().TrimStart('v', 'V').Contains('-');
 
     /// <summary>更新 dsh：spec = "latest"（正式版）或 "alpha"（抢先体验版）。要求 dsh 已停止。</summary>
-    public (bool ok, string msg) UpdateDsh(string spec)
+    public (bool ok, string msg) UpdateDsh(string spec, Action<string> onProgress = null)
     {
         if (svc.IsDshRunning())
             return (false, "dsh 正在运行——请先在「① 服务开关」停止服务，再更新。");
         var label = spec == "alpha" ? "抢先体验版（alpha）" : "正式版（latest）";
         Log($"[更新] npm install @deepseek-ai/dsh@{spec}（{label}，可能需要几分钟）…");
-        var (code, output) = RunCapture("cmd.exe", $"/c npm install @deepseek-ai/dsh@{spec}", cfg.DshAppDir, 900000);
+        var (code, output) = RunLive("cmd.exe", $"/c npm install @deepseek-ai/dsh@{spec}", cfg.DshAppDir, 900000, onProgress, m => Log(m));
         if (output.Length > 1500) output = output.Substring(output.Length - 1500);
         foreach (var line in output.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(12))
             Log("    " + line.TrimEnd());
@@ -412,7 +531,7 @@ public class UpdateService
     }
 
     /// <summary>逐 profile 执行 pnpm update（含 git 插件重新拉取）。要求 dsh 已停止。</summary>
-    public (bool ok, string msg) UpdateAllPlugins()
+    public (bool ok, string msg) UpdateAllPlugins(Action<string> onProgress = null)
     {
         if (svc.IsDshRunning())
             return (false, "dsh 正在运行——插件更新需要先停止服务，更新完再启动。");
@@ -437,13 +556,13 @@ public class UpdateService
             }
             Log($"[插件] 更新 profile「{p.Name}」（{updatable.Count}/{p.Plugins.Count} 个插件可更新）…");
             var names = string.Join(" ", updatable);
-            var (code, output) = RunCapture("cmd.exe", "/c pnpm update", p.Dir, 600000);
+            var (code, output) = RunLive("cmd.exe", "/c pnpm update", p.Dir, 900000, onProgress, m => Log(m));
             if (output.Length > 1200) output = output.Substring(output.Length - 1200);
             foreach (var line in output.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(10))
                 Log("    " + line.TrimEnd());
             if (code != 0) { fail.Add(p.Name); continue; }
             Log($"[插件] 重新解析「{p.Name}」的可更新插件（含 git 源）…");
-            var (code2, output2) = RunCapture("cmd.exe", $"/c pnpm update {names}", p.Dir, 600000);
+            var (code2, output2) = RunLive("cmd.exe", $"/c pnpm update {names}", p.Dir, 900000, onProgress, m => Log(m));
             if (output2.Length > 800) output2 = output2.Substring(output2.Length - 800);
             foreach (var line in output2.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(8))
                 Log("    " + line.TrimEnd());
