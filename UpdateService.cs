@@ -358,11 +358,65 @@ public class UpdateService
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// 清理 profile 的 dsh.profile.bundles 里无处可解析的悬空声明：
+    /// 既不在 profile 依赖里、也不在 dsh 安装目录 node_modules 里的 bundle，
+    /// 会让 dsh 启动跳过、更会让插件更新器的组合预检失败（报「下次启动会失败」并回滚）。
+    /// 典型成因：官方移除了实验性包，而 profile 声明还留着。改写前自动备份。
+    /// </summary>
+    public List<string> PruneDanglingBundles(string profileName = "web")
+    {
+        var pruned = new List<string>();
+        try
+        {
+            var dir = Path.Combine(ProfilesRoot, profileName);
+            var pjPath = Path.Combine(dir, "package.json");
+            if (!File.Exists(pjPath)) return pruned;
+            var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(pjPath));
+            var bundles = node?["dsh"]?["profile"]?["bundles"] as System.Text.Json.Nodes.JsonArray;
+            if (bundles == null) return pruned;
+
+            var deps = new HashSet<string>();
+            if (node!["dependencies"] is System.Text.Json.Nodes.JsonObject dependencies)
+                foreach (var d in dependencies) deps.Add(d.Key);
+
+            var keep = new System.Text.Json.Nodes.JsonArray();
+            foreach (var b in bundles)
+            {
+                var spec = b?.GetValue<string>();
+                if (string.IsNullOrEmpty(spec)) continue;
+                var name = spec.Split('#')[0];
+                var installed = deps.Contains(name)
+                    || Directory.Exists(Path.Combine(dir, "node_modules", name.Replace('/', '\\')))
+                    || Directory.Exists(Path.Combine(cfg.DshAppDir, "node_modules", name.Replace('/', '\\')));
+                if (installed) keep.Add(spec);
+                else
+                {
+                    pruned.Add(spec);
+                    Log($"[插件] 移除悬空 bundle 声明：{spec}（profile 与 dsh 安装目录均未安装，会卡死更新预检）");
+                }
+            }
+            if (pruned.Count == 0) return pruned;
+
+            var bak = pjPath + ".bak-dshpp-auto";
+            File.Copy(pjPath, bak, true);
+            node["dsh"]["profile"]["bundles"] = keep;
+            File.WriteAllText(pjPath, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+            Log($"[插件] 已清理 {pruned.Count} 条悬空声明（备份：{Path.GetFileName(bak)}）。");
+        }
+        catch (Exception ex)
+        {
+            Log("[插件] 悬空 bundle 清理失败：" + ex.Message);
+        }
+        return pruned;
+    }
+
     /// <summary>逐 profile 执行 pnpm update（含 git 插件重新拉取）。要求 dsh 已停止。</summary>
     public (bool ok, string msg) UpdateAllPlugins()
     {
         if (svc.IsDshRunning())
             return (false, "dsh 正在运行——插件更新需要先停止服务，更新完再启动。");
+        PruneDanglingBundles();
         var profiles = Profiles();
         if (profiles.Count == 0) return (true, "没有找到已安装插件的 profile，无需更新。");
         var (pcode, pout) = RunCapture("cmd.exe", "/c pnpm --version", profiles[0].Dir, 30000);
