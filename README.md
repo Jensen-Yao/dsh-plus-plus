@@ -1,131 +1,98 @@
 # dsh++
 
-<p align="center">
-  <img src="docs/icon.png" width="96" alt="dsh++ icon" />
-</p>
+DeepSeek Harness 的 Windows 桌面控制台。3.2 补全后台插件检查、聚合子包发现、锁文件来源提示和安装目标核验，保留重启接续、维护记录、中断恢复与双主题界面。
 
-<p align="center">
-  <b>dsh++</b> —— DeepSeek Harness（dsh）的桌面控制台插件（dsh-plugin）
-</p>
+![dsh++ 插件管理](docs/screenshots/plugins-light.png)
 
-<p align="center">
-  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2B-blue" />
-  <img alt=".NET" src="https://img.shields.io/badge/.NET-8-purple" />
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-green" />
-  <img alt="language" src="https://img.shields.io/badge/lang-C%23%20%2F%20WPF-9cf" />
-  <img alt="themes" src="https://img.shields.io/badge/themes-dark%20%2F%20light-lightgrey" />
-  <img alt="dsh" src="https://img.shields.io/badge/DeepSeek%20Harness-%3E%3D0.1.0--rc.6-orange" />
-</p>
+## 使用
 
-**dsh++ 是什么？** 一句话：**把 DeepSeek Harness 的 `dsh web` 从命令行搬进一个漂亮的桌面应用**，让手机随时打开和电脑完全同步的界面（包括实时思考过程），并集中管理端口、域名、防火墙、Tailscale 和各类存储位置。
+需要 Windows 10/11、.NET 8 Desktop Runtime、Node.js，以及已安装的 DSH。当前启动方式已在 DSH 0.2.1-rc.2 上验证。新配置默认仅本机访问、需要远程配对、不启用公网隧道；已有配置保留原来的连接偏好。
 
-界面基于 WPF 重写，采用 **App Shell UI** 设计语言（`app-shell-ui` skill）：侧边栏导航 + 内容卡片、单一品牌蓝、深浅双主题一键切换、描边图标、设置列表式排版。
+1. 完整解压 Windows x64 发布包，保留 EXE、compat-polyfill.js 和 scripts 目录。
+2. 在「数据与路径」确认 DSH 安装目录与数据目录。
+3. 在「远程连接」选择局域网、Tailscale 或自定义域名；仅本机使用时，在「启动设置」开启对应选项。
+4. 从「服务总览」启动，等待“运行中”，再点「打开 DSH」。
 
-## ✨ 功能
+旧版自更新器只替换 EXE 时，新版可从内嵌资源提供匹配的运行与更新脚本，缓存在状态目录的 runtime-assets 下，不依赖被覆盖或遗漏的外置脚本；完整发布包仍是推荐安装方式。
 
-- **一键启停**：启动 / 停止 `dsh web`，实时显示运行状态与对外绑定地址（0.0.0.0 全网卡 or 127.0.0.1 仅本机）
-- **手机入口**：三种连接方式（同一 Wi-Fi / 自定义域名 / Tailscale），大字手机地址一键复制，附「缺什么点什么」连接检查清单
-- **Tailscale 集成**：登录 / 连接 / 断开 / 安装，状态实时显示（IP、ts.net 域名）
-- **存储位置管理**：查看 / 修改 / 打开 dsh 各类数据目录（settings、sessions、storages、profiles、skills、agent-presets），技能与 MCP 的位置一键直达
-- **免扫码直连**：一键关闭手机远程插件的配对门禁（`requirePairingForLan`）
-- **自动公网隧道**：autoTunnel 开关 + 临时随机域名实时显示
-- **浏览器兼容补丁**：自动为网页入口注入 `crypto.randomUUID` / `AbortSignal.*` 等 polyfill（旧手机浏览器可用，npm 更新后自动重新注入）
-- **运行日志**：dsh 输出实时滚动查看
-- **更新中心（⑥ 检查更新）**：dsh 内核**双通道**更新——同时展示 npm 正式版（latest）与抢先体验版（alpha，对应 GitHub Release），一键更新到任一通道（更新前自动要求停止服务，兼容补丁自动重注入）；dsh++ 本体从 GitHub Release 检查并**一键自更新**（下载→替换→自动重启）；已装插件支持**一键查看版本明细**（逐 profile 列出插件名、已装版本、依赖声明）与**一键更新全部插件**（逐 profile `pnpm update`，GitHub 插件重新拉取最新提交），并可开关「启动时自动更新」
-- **深浅双主题**：右上角一键切换（应用自动重启），标题栏 / 侧边栏 / 卡片全套 token 换肤
-- **Freebuff 独立组件**：**不随 dsh++ 启动自动启动**，需要时在「② Freebuff 服务」页面单独启动 / 停止 `F:\freebuffapi` 的 Docker 服务；Base URL 和 API Key 默认隐藏，可单独显示或复制
+本机管理入口固定为 http://127.0.0.1:端口。远程模式额外在选中的具体网卡地址提供转发；转发保留 Host、Origin 和来源标记，远程客户端仍受 DSH 认证与远程插件配对检查控制。控制台不再生成 0.0.0.0 绑定。更改网卡、连接方式、域名后重启服务生效；修改端口或数据目录前先停止服务。
 
-## 📸 截图
+插件市场在原启动参数及环境下重启 DSH 时，新进程会向同一次启动的宿主登记；远程转发在等待期间返回 503，登记后继续工作，不会随旧进程退出而消失。未登记进程不会在 DSH 缺席时通过该转发对外提供服务。等待上限使用 StartupTimeoutSeconds，到期仍无替代进程则关闭转发。明确停止服务后，迟到的同次启动进程也不会重新拉起服务。清理环境变量或替换启动入口的第三方重启方式不在此接续范围内。
 
-| 深色主题 | 浅色主题 |
+## 插件维护
+
+「插件管理」列出每个 profile 的直接入口与聚合子插件、已安装版本、实际来源和更新策略。可以按 profile、可维护、有新版、固定版本、本地链接、官方依赖、来源异常和聚合子包筛选，并导出当前显示的 JSON 清单。聚合子包显示所属更新入口，不会在更新时意外提升为直接依赖。搜索与筛选只影响显示；“更新所选”处理所有勾选入口。
+
+“打开时检查控制台、内核与 web 插件”会后台检查三个目标，不安装依赖、不联网修复或阻挡服务启动。手动检查覆盖当前 profile 的全部入口和已发现子包，不受搜索或“有新版”筛选隐藏；普通刷新保留安装信息没有变化的检查结果。失败显示失败与检查时间，不把网络故障当成“已是最新”。维护开始前会取消并等待插件检查结束。
+
+npm 同时查询 latest 与声明内目标；声明范围外的新版本提示“声明限制”，需用“指定版本”明确改变范围。Git 浮动分支比较远端提交与锁定提交，固定 tag 列出更高版本 tag，注解 tag 使用剥离后的提交。只沿含 dsh.bundle 元数据的依赖展开聚合插件，不扫描所有普通 npm 工具依赖。
+
+| 来源 / 声明 | 默认行为 |
 | --- | --- |
-| ![dsh++ 深色](docs/screenshots/main-dark.png) | ![dsh++ 浅色](docs/screenshots/main-light.png) |
+| npm 版本范围 | 显示 latest，普通更新只安装声明内精确目标 |
+| 未固定版本的 GitHub / Git | 查询远端 ref，安装精确提交后保留原分支声明 |
+| 精确版本、Git tag、commit | 保留；用“指定版本”明确修改目标 |
+| link: / file: / workspace: | 本地维护，不交给批量更新 |
+| @deepseek-ai/* 伴随包 | 标记“跟随内核”，不参加普通插件更新 |
+| 聚合子包 | 检查版本，由所属直接入口维护 |
 
-## 🚀 快速开始
+一次更新按以下顺序执行：确认声明与停机影响 → 在原服务运行时解析精确版本 / 提交 → 取得维护锁并检查依赖未被其他程序改动 → 保存恢复点 → 停止原服务 → 仅安装所选入口的精确目标 → 核对实际版本 / Git 提交及来源 → 保留原声明 → 配置组合检查 → 按偏好重新启动并验证网页。解析失败或目标已经就位时不停止服务；命令退出 0 却没有达到目标仍视为失败。失败或取消后恢复原清单与锁文件，再安装原依赖；原服务之前运行时尝试恢复启动。恢复依赖需要本地缓存或网络，失败时保留恢复点并报告错误。
 
-### 前置条件
+pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁。安装与恢复需要可复现的解析结果，主动更新则只刷新明确选择的目标。3.2 用 YamlDotNet 解析锁文件：远端声明对应本地 file: 归档 / link:、声明不一致、格式损坏都会提示来源问题；不删除整个锁文件或自动升级全部插件。安装精确目标后，只恢复该项的原声明，保留 pnpm 生成的版本、提交、完整性哈希和共享依赖图。跨包共享依赖仍可能随所选目标变化。
 
-- Windows 10/11，[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)（开发需 SDK）
-- 已安装 [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh)（`@deepseek-ai/dsh`，≥ 0.1.0-rc.6）
+更新过程中可以取消，取消后的恢复阶段需等待完成。其他服务启停和依赖修改在维护期间不可并行执行。跨控制台进程的维护通过文件独占锁协调。
 
-### 使用发布版
+固定 GitHub tag 不会自动跳到新 tag。运行时更新器不会自动修复所有社区插件的 API 不兼容；组合检查只验证静态配置，原服务此前未运行时不会自行拉起服务做运行验证。
 
-1. 下载 [最新 Release](https://github.com/Jensen-Yao/dsh-plus-plus/releases) 的 `dsh-plus-plus.exe` 与 `compat-polyfill.js`，放同一目录
-2. 双击运行，在「⑤ 存储位置」确认 DSH 主目录正确
-3. 点「① 服务开关」→「▶ 启动服务」
-4. 如需使用 Freebuff，进入「② Freebuff 服务」点击「启动 Freebuff」
-5. 点「③ 手机入口」→「复制手机地址」，发到手机浏览器打开
+## 版本与备份
 
-### 从源码构建
+- DSH：查看 npm latest / alpha 通道，安装前解析精确版本，只备份安装目录与实际同步的 web profile。内核更新时同步 web profile 的官方伴随包，也可以单独点“同步官方依赖”；目标版本来自实际内核安装目录，其他 profile 与社区插件不参加这一步。
+- dsh++：检查 GitHub Windows x64 发布包，验证必需文件后替换，旧程序保留在 app-updates 目录。
+- 恢复点：保存 package.json、pnpm-lock.yaml / package-lock.json、cordis.patch.yml、pnpm-workspace.yaml 和 .npmrc；不复制会话或凭据数据目录。存在锁文件时按锁安装；没有锁文件时仅能按原声明重新解析，不能保证传递依赖的原版本。
+- 手动备份：使用插件页选择的 profile；“全部 Profile”时默认为 web。目录里仍可能包含敏感配置，请妥善保管恢复点。
+- 维护记录：保存在状态目录的 history 下，包含目标、阶段、结果、恢复点与包管理子进程信息。控制台异常退出后，未完成任务显示为“待恢复”，新的依赖修改暂停；启动 DSH 不受此限制，不自动联网修复。在“恢复中断任务”中明确确认后，会核对并结束该任务遗留的 Node 安装进程，再保存当前恢复点并恢复旧依赖。记录与恢复点只覆盖依赖及配置，不提供会话数据库迁移回滚。
 
-```bash
-git clone https://github.com/Jensen-Yao/dsh-plus-plus.git
-cd dsh-plus-plus
+## 诊断
+
+「诊断与日志」检查安装版本、计划绑定、端口进程归属、npm / pnpm、缺失的客户端构建产物、核心伴随包版本差异和 profile 配置组合。日志支持复制、导出和暂停跟随，常见 token、API key、密码与 Authorization 值会脱敏；导出前仍应检查插件是否输出了未识别的敏感字段。
+
+Freebuff 保留为独立 Docker 组件，由用户手动启停。启动 dsh++ 不会启动 Freebuff；连接信息默认隐藏。配置中的 FreebuffDir 与 FreebuffDocker 可以调整项目和 Docker Desktop 路径。
+
+## 配置
+
+默认状态目录是 %APPDATA%\dsh-control；可以用 DSHPP_STATE_DIR 指定独立状态目录。config.json 持久化主题、窗口位置、数据路径、启动与更新偏好。旧版 AutoUpdatePlugins 自动迁移为关闭，CheckUpdatesOnLaunch 只做版本检查。配置采用临时文件写入后替换，窗口尺寸尚未保存时的 NaN 值可以正常序列化。
+
+| 设置 | 用途 |
+| --- | --- |
+| DshAppDir | 包含 node_modules/@deepseek-ai/dsh 的安装目录 |
+| DshHome / AgentsHome | 传给服务的 DSH_HOME / DSH_AGENTS_HOME |
+| Mode / AccessMode / BindHost | 本机或远程模式、连接方式、具体网卡；BindHost 为空时自动选择 |
+| RestartAfterUpdate | 更新后恢复原先运行的服务，默认开启 |
+| StartupTimeoutSeconds | 网页就绪及重启接续等待，默认 60 秒；设置页可调整 10–180 秒 |
+| UpdateTimeoutMinutes | 每条包管理命令超时，默认 15 分钟；设置页可调整 1–60 分钟 |
+| BrowserCompatibilityPatch | 是否应用已有的旧浏览器兼容补丁 |
+
+## 开发与验证
+
+~~~powershell
+dotnet build dsh-plus-plus.csproj -c Release
 dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
-# 产物：publish/dsh-plus-plus.exe + compat-polyfill.js
-```
+.\publish\dsh-plus-plus.exe --self-test
+.\publish\dsh-plus-plus.exe --smoke
+.\publish\dsh-plus-plus.exe --render-check "F:\temp\dshpp-ui"
+.\publish\dsh-plus-plus.exe --service status
+.\publish\dsh-plus-plus.exe --check-plugins web
+node --test tests/runtime-host.test.mjs
+~~~
 
-自检（无窗口诊断，输出到 `%TEMP%\dsh-control-smoke.txt`）：
+self-test 使用临时目录检查目标解析、声明保留、旧产物假成功拒绝、失败 / 取消恢复、聚合发现、来源偏差、注解 tag 和维护互斥；另外用本机回环 registry 驱动真实 npm / pnpm，验证更新后的锁文件仍可 frozen offline 安装。不修改用户 profile，不需要外网 registry。Node 集成检查验证 HTTP / WebSocket 转发、来源标记、进程替换接续、停止与超时释放。render-check 输出 8 个页面在深浅主题、1220×820 / 960×700 窗口下的 32 张真实 WPF 渲染图与按钮裁切报告，另有 4 张宽 / 窄更新确认窗口图；不执行依赖更新或模型调用。
 
-```bash
-dsh-plus-plus.exe --smoke
-```
+check-plugins 是只读版本诊断，默认检查 web；结果写入状态目录的 plugin-update-check.json。任一远端检查失败或 profile 不存在时退出码为 1，发现新版或来源提示本身不视为命令失败。
 
-## 🔧 配置说明
+service 支持 start / stop / restart / status；结果写入状态目录的 service-result.txt。服务由独立 Node 宿主维持，关闭控制台可以保留后台服务；端口停止操作会先检查 DSH 进程归属。
 
-| 配置 | 说明 |
-| --- | --- |
-| 端口 | `dsh web` 监听端口（默认 3080） |
-| 只让本机使用 | 勾选 = 绑定 127.0.0.1（手机连不进来）；取消 = 绑定 0.0.0.0 全网卡 |
-| 手机访问方式 | 自动 IP 直连 / 自定义域名（自动加入 `--trusted-host`）/ Tailscale（自动取 ts.net 域名） |
-| 免扫码直接访问 | 关闭 `remote-web-ui` 的配对门禁，手机打开地址即可用 |
-| 自动公网隧道 | `autoTunnel`：生成 trycloudflare.com 临时随机域名（仅供扫码配对） |
-| DSH 主目录 / Agents 目录 | 启动时注入 `DSH_HOME` / `DSH_AGENTS_HOME` 环境变量 |
-| 主题 | `dark` / `light`，右上角图标一键切换 |
-| Freebuff 服务 | 使用 `E:\DockerDesktop\Docker Desktop.exe` 和 `F:\freebuffapi\compose.yaml`；不修改 DSH / Codex 默认 Provider |
+主要文件：RuntimeLifecycle.cs 负责服务生命周期；PluginInventory.cs、PluginLock.cs 与 PluginUpdates.cs 负责聚合发现、来源读取和目标解析；PluginMaintenance.cs 与 MaintenanceHistory.cs 负责维护、记录和恢复；CommandRunner.cs 负责取消与超时；scripts/runtime-host.mjs 负责服务登记与远程转发；MainWindow.xaml(.cs) 与 UpdatePreviewWindow.xaml(.cs) 负责界面。
 
-配置文件保存在 `%APPDATA%\dsh-control\config.json`；修改端口/方式/域名/存储位置后需「停止→启动」生效。
+Windows 发布包与变更记录见 [GitHub Releases](https://github.com/Jensen-Yao/dsh-plus-plus/releases)。
 
-### Freebuff 本地服务
-
-dsh++ **不会**随自身或 dsh 启动自动拉起 Freebuff；需要时在「② Freebuff 服务」页面点「启动 Freebuff」单独启动，或点「停止」单独停止（也可在页面直接刷新状态）。该组件不会修改 DSH、Codex 或其他 Agent 的 Provider 配置。
-
-默认连接信息：
-
-```text
-Base URL: http://127.0.0.1:18080/v1
-API Key:  fb-local-key
-```
-
-需要调整端口或本地访问密码时，编辑 `F:\freebuffapi\.env` 中的 `FREEBUFF_PORT` / `FREEBUFF_API_KEY`，然后重启 Freebuff 服务。Freebuff 登录 Token 仅供本地服务使用，不要填入客户端。
-
-## 📁 仓库结构
-
-```
-dsh-plus-plus/
-├── dsh-plus-plus.csproj      # 主项目（net8.0-windows + WPF）
-├── App.xaml(.cs)             # 应用入口与主题装配（dark/light 资源字典）
-├── MainWindow.xaml(.cs)      # 主窗口：侧边栏 + 六个页面
-├── DshService.cs             # 控制逻辑（与界面解耦）：启停/端口/绑定/Tailscale/存储
-├── FreebuffService.cs        # Freebuff Docker Desktop / Compose 启停与状态检查
-├── Config.cs                 # 配置读写（%APPDATA%\dsh-control\config.json）
-├── TailscaleCli.cs           # tailscale CLI 封装
-├── FrontendPatch.cs          # 手机浏览器兼容补丁注入
-├── HelpWindow / InputDialog  # 使用说明 / 路径输入对话框
-├── Themes/                   # app-shell-ui 双主题 token 与控件样式
-├── compat-polyfill.js        # 手机浏览器兼容补丁（自动注入网页入口）
-├── icon-gen/                 # 图标生成工具（PNG → 多尺寸 ICO）
-├── patches/lan.patch.yml     # dsh 全网卡绑定补丁（--patch 注入）
-├── scripts/                  # 命令行启动脚本（run-dsh-web.cmd 等）
-└── docs/                     # 项目页面与截图（GitHub Pages）
-```
-
-## 🏷️ 与 DeepSeek Harness 的关系
-
-- 本仓库是 **dsh-plugin** 生态的一部分：以 `--patch` 覆盖层方式增强 `dsh web` 的启动与配置，不修改 dsh 本体
-- 关联插件：[dsh-web-ui](https://github.com/zhu1090093659/dsh-web-ui)（手机远程控制 / 扫码配对插件，本工具直接驱动其配置）
-- 网络层：可选集成 [Tailscale](https://tailscale.com/)（跨网络完全实时）与 Cloudflare 快速隧道
-
-## 📄 License
-
-[MIT](LICENSE)
+MIT License.

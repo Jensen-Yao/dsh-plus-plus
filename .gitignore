@@ -4,6 +4,8 @@ obj/
 publish/
 *.user
 release/
+.artifacts/
+.playwright-cli/
 *.zip
 
 # 临时与调试

@@ -1,507 +1,150 @@
 <Window x:Class="DshControl.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="dsh++ 控制台 — DeepSeek Harness 桌面控制"
-        Width="960" Height="720" MinWidth="860" MinHeight="580"
-        WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource BgAppBrush}"
-        FontFamily="Microsoft YaHei UI, Segoe UI"
-        Icon="dsh-control.ico"
+        Title="dsh++ · Harness 控制台" Width="1220" Height="820" MinWidth="920" MinHeight="640"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource BgAppBrush}"
+        FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="13" Icon="dsh-control.ico"
         TextOptions.TextFormattingMode="Display">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <!-- ············ 头部 ············ -->
-        <Border Grid.Row="0" Background="{DynamicResource BgAppBrush}" Padding="24,14,24,10">
-            <Grid>
-                <StackPanel Orientation="Vertical" VerticalAlignment="Center">
-                    <TextBlock Text="dsh++" Style="{StaticResource TbTitle}"/>
-                    <TextBlock Text="目标就一件事：让手机打开和电脑一样的界面"
-                               Style="{StaticResource TbSub}" Margin="0,2,0,0"/>
+    <Grid Background="{DynamicResource BgAppBrush}">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Border Background="{DynamicResource BgSidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" Padding="14,26,14,18">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="12,0,0,28">
+                    <StackPanel Orientation="Horizontal"><Image Source="dsh-control.ico" Width="30" Height="30" Margin="0,0,10,0"/><TextBlock Text="dsh++" FontSize="25" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/></StackPanel>
+                    <TextBlock Text="HARNESS 控制台" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"/>
                 </StackPanel>
-                <Button x:Name="ThemeToggleBtn" Style="{StaticResource IconButtonStyle}"
-                        HorizontalAlignment="Right" VerticalAlignment="Top"
-                        ToolTip="切换深浅色（即时生效）" Click="ThemeToggle_Click">
-                    <Path x:Name="ThemeIcon" Style="{StaticResource HeaderIcon}"
-                          Data="{StaticResource SunGeom}" Stroke="{DynamicResource TextSecondaryBrush}"/>
-                </Button>
-            </Grid>
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,20,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Ellipse x:Name="SidebarDot" Width="7" Height="7" Fill="{DynamicResource TextTertiaryBrush}" Margin="0,0,8,0"/><TextBlock x:Name="SidebarStatus" Text="正在检查" Style="{StaticResource TbSmall}"/></StackPanel>
+                    <TextBlock x:Name="VersionText" Style="{StaticResource TbTertiary}"/>
+                    <Button Content="使用说明" Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Margin="0,12,0,0" Click="BtnHelp_Click"/>
+                </StackPanel>
+                <ListBox x:Name="NavList" Style="{StaticResource NavListStyle}" ItemContainerStyle="{StaticResource NavItemStyle}" SelectionChanged="NavList_SelectionChanged">
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80F;" Style="{StaticResource NavGlyph}"/><TextBlock Text="服务总览"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74C;" Style="{StaticResource NavGlyph}"/><TextBlock Text="插件管理"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE895;" Style="{StaticResource NavGlyph}"/><TextBlock Text="版本与备份"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE774;" Style="{StaticResource NavGlyph}"/><TextBlock Text="远程连接"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" Style="{StaticResource NavGlyph}"/><TextBlock Text="启动设置"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B7;" Style="{StaticResource NavGlyph}"/><TextBlock Text="数据与路径"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE950;" Style="{StaticResource NavGlyph}"/><TextBlock Text="Freebuff"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" Style="{StaticResource NavGlyph}"/><TextBlock Text="诊断与日志"/></StackPanel></ListBoxItem>
+                </ListBox>
+            </DockPanel>
         </Border>
-
-        <!-- ············ 主体 ············ -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- ············ 侧边栏 ············ -->
-            <Border Grid.Column="0" Background="{DynamicResource BgSidebarBrush}" Padding="12,14,12,14">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- 品牌块 -->
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,16">
-                        <Border Background="{DynamicResource PrimaryBrush}" CornerRadius="8"
-                                Width="32" Height="32">
-                            <TextBlock Text="++" Foreground="White" FontWeight="Bold" FontSize="13"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="dsh++" FontSize="14.5" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock Text="DeepSeek Harness 桌面工具" FontSize="11.5"
-                                       Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                        </StackPanel>
+        <Grid Grid.Column="1" Margin="28,0,28,18">
+            <Grid.RowDefinitions><RowDefinition Height="64"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <TextBlock x:Name="BreadcrumbText" Text="工作空间 / 服务总览" Style="{StaticResource TbSmall}" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button ToolTip="打开 DSH" AutomationProperties.Name="打开 DSH" Style="{StaticResource IconButtonStyle}" Click="BtnOpenUi_Click" Margin="0,0,8,0"><TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets"/></Button>
+                    <Button x:Name="ThemeToggleBtn" ToolTip="切换深浅色" AutomationProperties.Name="切换深浅色" Style="{StaticResource IconButtonStyle}" Click="ThemeToggle_Click"><TextBlock Text="&#xE708;" FontFamily="Segoe MDL2 Assets"/></Button>
+                </StackPanel>
+            </Grid>
+            <Grid Grid.Row="1">
+                <Grid x:Name="PageSvc">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel Margin="0,8,0,24"><TextBlock Text="服务总览" Style="{StaticResource PageTitle}"/><TextBlock Text="DeepSeek Harness" Style="{StaticResource TbSub}" Margin="0,6,0,0"/></StackPanel>
+                    <Grid Grid.Row="1" Margin="0,0,0,26">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="服务状态" Style="{StaticResource TbSmall}"/><StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Ellipse x:Name="SvcDot" Width="9" Height="9" Fill="{DynamicResource TextTertiaryBrush}" Margin="0,0,8,0"/><TextBlock x:Name="SvcStateText" Text="检查中" Style="{StaticResource MetricText}"/></StackPanel></StackPanel>
+                        <StackPanel Grid.Column="1" Margin="20,0,0,0"><TextBlock Text="DSH 内核" Style="{StaticResource TbSmall}"/><TextBlock x:Name="OverviewVersion" Text="—" Style="{StaticResource MetricText}" Margin="0,10,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="2" Margin="20,0,0,0"><TextBlock Text="当前 Profile" Style="{StaticResource TbSmall}"/><TextBlock x:Name="OverviewPlugins" Text="web" Style="{StaticResource MetricText}" Margin="0,10,0,0"/></StackPanel>
+                    </Grid>
+                    <StackPanel Grid.Row="2" Margin="0,0,0,24">
+                        <WrapPanel><Button x:Name="BtnStart" Content="启动服务" Style="{StaticResource BtnPrimary}" Click="BtnStart_Click" Margin="0,0,8,8"/><Button x:Name="BtnRestart" Content="重启" Style="{StaticResource BtnSecondary}" Click="BtnRestart_Click" Margin="0,0,8,8"/><Button x:Name="BtnStop" Content="停止" Style="{StaticResource BtnGhost}" Click="BtnStop_Click" Margin="0,0,8,8"/><Button x:Name="BtnOpenUi" Content="打开 DSH" Style="{StaticResource BtnGhost}" Click="BtnOpenUi_Click" Margin="0,0,0,8"/></WrapPanel>
+                        <TextBlock x:Name="PcUrlText" TextWrapping="Wrap" Style="{StaticResource TbBody}" Margin="0,8,0,0" Cursor="Hand" ToolTip="复制地址" MouseLeftButtonUp="PcUrlText_Click"/>
+                        <TextBlock x:Name="BindText" Style="{StaticResource TbHint}" Margin="0,6,0,0"/>
+                        <TextBlock x:Name="OverviewPluginCheck" Style="{StaticResource TbHint}" Text="插件尚未检查" Margin="0,6,0,0"/>
+                        <Border x:Name="FailurePanel" Visibility="Collapsed" BorderBrush="{DynamicResource WarningBrush}" BorderThickness="3,0,0,0" Padding="14,10" Margin="0,18,0,0" Background="{DynamicResource BgMutedBrush}"><TextBlock x:Name="FailureText" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" MaxHeight="110" TextTrimming="CharacterEllipsis"/></Border>
                     </StackPanel>
-
-                    <!-- 导航 -->
-                    <ListBox x:Name="NavList" Grid.Row="1"
-                             Style="{StaticResource NavListStyle}"
-                             ItemContainerStyle="{StaticResource NavItemStyle}"
-                             SelectionChanged="NavList_SelectionChanged">
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavFillIcon}" Data="{StaticResource BoltGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="服务开关" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="启动 / 停止 / 绑定状态" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource FolderGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Freebuff 服务" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="Docker 启动 / Base / Key" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource PhoneGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="手机入口" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="手机地址与连接检查" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource GearGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="高级设置" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="端口 / 免扫码 / 隧道" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource FolderGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="存储位置" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="数据、技能、MCP 的位置" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource GearGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="检查更新" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="dsh / dsh++ / 插件" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem>
-                            <StackPanel Orientation="Horizontal">
-                                <Path Style="{StaticResource NavStrokeIcon}" Data="{StaticResource DocGeom}"/>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="运行日志" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
-                                    <TextBlock Text="dsh 的实时输出" FontSize="11.5"
-                                               Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ListBoxItem>
-                    </ListBox>
-
-                    <!-- 底部 -->
-                    <StackPanel Grid.Row="2">
-                        <Button x:Name="BtnHelp" Content="使用说明" Style="{StaticResource BtnGhost}"
-                                HorizontalAlignment="Left" Height="30" Padding="14,0" Margin="2,0,0,6"
-                                Click="BtnHelp_Click"/>
-                        <StackPanel Orientation="Horizontal" Margin="2,2,0,0">
-                            <TextBlock FontSize="12">
-                                <Hyperlink x:Name="LinkSessions" Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Click="LinkSessions_Click">打开会话目录</Hyperlink>
-                            </TextBlock>
-                            <TextBlock Text=" · " FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" Margin="6,0"/>
-                            <TextBlock FontSize="12">
-                                <Hyperlink x:Name="LinkConfigDir" Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Click="LinkConfigDir_Click">打开配置目录</Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                        <TextBlock x:Name="VersionText" Text="v?" FontSize="11" Margin="2,6,0,0"
-                                   Foreground="{DynamicResource TextTertiaryBrush}"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- ············ 内容区 ············ -->
-            <Border Grid.Column="1" Background="{DynamicResource BgAppBrush}" Padding="16,10,16,16">
-                <Grid>
-                    <!-- ① 服务开关 -->
-                    <Grid x:Name="PageSvc">
-                        <Border Style="{StaticResource CardStyle}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="① 服务开关" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="把 dsh 网页服务跑起来（电脑上用的界面）"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,8"/>
-
-                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,6">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Ellipse x:Name="SvcDot" Width="9" Height="9" Margin="0,0,7,0"
-                                                     Fill="{DynamicResource TextTertiaryBrush}"/>
-                                            <TextBlock x:Name="SvcStateText" Text="○ 服务未启动"
-                                                       FontSize="14" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="18,0,0,0">
-                                            <Button x:Name="BtnStart" Content="▶ 启动服务" Style="{StaticResource BtnPrimary}"
-                                                    Margin="0,0,8,0" Click="BtnStart_Click"/>
-                                            <Button x:Name="BtnStop" Content="停止服务" Style="{StaticResource BtnDanger}"
-                                                    Margin="0,0,8,0" Click="BtnStop_Click"/>
-                                            <Button x:Name="BtnOpenUi" Content="打开电脑界面" Style="{StaticResource BtnGhost}"
-                                                    Click="BtnOpenUi_Click"/>
-                                        </StackPanel>
-                                    </StackPanel>
-
-                                    <TextBlock x:Name="PcUrlText" Style="{StaticResource TbSmall}"
-                                               Cursor="Hand" TextWrapping="Wrap" Margin="0,2,0,4"
-                                               ToolTip="点击复制到剪贴板" MouseLeftButtonUp="PcUrlText_Click"/>
-
-                                    <StackPanel Margin="0,8,0,0">
-                                        <ToggleButton x:Name="TglLocalOnly" Style="{StaticResource SwitchStyle}"
-                                                      Content="只让本机使用（对外只绑 127.0.0.1，手机连不进来）"
-                                                      Checked="TglLocalOnly_Changed" Unchecked="TglLocalOnly_Changed"/>
-                                        <TextBlock Text="取消勾选 = 绑定全网卡 0.0.0.0（手机可连）；修改后需「停止→启动」才生效"
-                                                   Style="{StaticResource TbHint}" Margin="0,4,0,0"/>
-                                    </StackPanel>
-
-                                    <TextBlock x:Name="BindText" Style="{StaticResource TbSmall}"
-                                               TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-
-                    <!-- ② Freebuff 服务 -->
-                    <Grid x:Name="PageFreebuff" Visibility="Collapsed">
-                        <Border Style="{StaticResource CardStyle}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="② Freebuff 服务" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="独立的 Docker 服务组件；不会修改 dsh 或 Codex 的默认配置"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
-
-                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,8">
-                                        <Ellipse x:Name="FreebuffDot" Width="9" Height="9" Margin="0,0,7,0"
-                                                 Fill="{DynamicResource TextTertiaryBrush}"/>
-                                        <TextBlock x:Name="FreebuffStateText" Text="○ 未检查"
-                                                   FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                                        <Button x:Name="BtnFreebuffStart" Content="启动 Freebuff" Style="{StaticResource BtnPrimary}"
-                                                Margin="18,0,8,0" Click="BtnFreebuffStart_Click"/>
-                                        <Button x:Name="BtnFreebuffStop" Content="停止" Style="{StaticResource BtnDanger}"
-                                                Margin="0,0,8,0" Click="BtnFreebuffStop_Click"/>
-                                        <Button x:Name="BtnFreebuffRefresh" Content="刷新状态" Style="{StaticResource BtnGhost}"
-                                                Click="BtnFreebuffRefresh_Click"/>
-                                    </StackPanel>
-
-                                    <TextBlock x:Name="FreebuffStatusText" Style="{StaticResource TbHint}"
-                                               TextWrapping="Wrap" Margin="0,0,0,12"/>
-
-                                    <Border Style="{StaticResource HeroStyle}">
-                                        <StackPanel>
-                                            <TextBlock Text="可选连接信息" Style="{StaticResource TbBody}" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="FreebuffConnectionText" Text="Base URL: ********&#10;API Key:  ********"
-                                                       Style="{StaticResource TbSmall}" FontFamily="Consolas"
-                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                                <Button x:Name="BtnFreebuffReveal" Content="显示 Base 和 Key" Style="{StaticResource BtnSecondary}"
-                                                        Click="BtnFreebuffReveal_Click"/>
-                                                <Button x:Name="BtnFreebuffCopy" Content="复制连接信息" Style="{StaticResource BtnGhost}"
-                                                        Margin="8,0,0,0" Click="BtnFreebuffCopy_Click"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <TextBlock Text="服务启动后，可把这组信息手动添加到任意客户端；它不会自动成为 DSH、Codex 或其他 Agent 的默认 Provider。"
-                                               Style="{StaticResource TbHint}" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="FreebuffPathsText" Text="项目目录：…\nDocker Desktop：…"
-                                               Style="{StaticResource TbHint}" Margin="0,12,0,0" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-
-                    <!-- ③ 手机入口 -->
-                    <Grid x:Name="PagePhone" Visibility="Collapsed">
-                        <Border Style="{StaticResource CardStyle}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="③ 手机入口" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="手机打开下面的地址，就能看到和电脑一样的界面"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
-
-                                    <TextBlock Text="怎么连：" Style="{StaticResource TbBody}" Margin="0,0,0,6"/>
-                                    <WrapPanel Orientation="Horizontal">
-                                        <RadioButton x:Name="RbIp" GroupName="access" Style="{StaticResource OptionRadio}"
-                                                     Checked="RbIp_Checked" Margin="0,0,20,6">
-                                            <StackPanel>
-                                                <TextBlock Text="同一 Wi-Fi（最简单）" FontSize="14"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                                <TextBlock Text="电脑和手机连同一个 Wi-Fi 或手机热点" FontSize="12"
-                                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
-                                            </StackPanel>
-                                        </RadioButton>
-                                        <RadioButton x:Name="RbDomain" GroupName="access" Style="{StaticResource OptionRadio}"
-                                                     Checked="RbDomain_Checked" Margin="0,0,20,6">
-                                            <StackPanel>
-                                                <TextBlock Text="自定义域名（高级）" FontSize="14"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                                <TextBlock Text="填一个指向这台电脑的域名" FontSize="12"
-                                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
-                                            </StackPanel>
-                                        </RadioButton>
-                                        <RadioButton x:Name="RbTs" GroupName="access" Style="{StaticResource OptionRadio}"
-                                                     Checked="RbTs_Checked" Margin="0,0,20,6">
-                                            <StackPanel>
-                                                <TextBlock Text="任何网络 · Tailscale（推荐）" FontSize="14"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                                <TextBlock Text="两台设备装 Tailscale 登录同一账号，出门在外也能连" FontSize="12"
-                                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
-                                            </StackPanel>
-                                        </RadioButton>
-                                    </WrapPanel>
-
-                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                        <TextBlock Text="域名：" Style="{StaticResource TbBody}" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="HostBox" Style="{StaticResource InputStyle}" Width="230"
-                                                 TextChanged="HostBox_TextChanged"/>
-                                        <TextBlock Text="域名必须解析到这台电脑；不确定就选「Tailscale」"
-                                                   Style="{StaticResource TbHint}" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    </StackPanel>
-
-                                    <Border Style="{StaticResource HeroStyle}" Margin="0,12,0,0">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock x:Name="HeroUrlText" FontSize="17" FontWeight="Bold"
-                                                       Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
-                                                       Cursor="Hand" ToolTip="点击复制；把它发到手机浏览器打开"
-                                                       MouseLeftButtonUp="HeroUrlText_Click"/>
-                                            <Button x:Name="BtnCopyPhone" Content="复制手机地址" Style="{StaticResource BtnPrimary}"
-                                                    Margin="16,0,0,0" Click="BtnCopyPhone_Click"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <TextBlock x:Name="PhoneHintText" Style="{StaticResource TbHint}" Margin="0,8,0,0"/>
-
-                                    <TextBlock Text="连接检查（缺什么，点什么）：" Style="{StaticResource TbBody}"
-                                               Margin="0,14,0,0"/>
-                                    <TextBlock x:Name="CkSvcText" Style="{StaticResource TbBody}" Margin="12,6,0,0"
-                                               TextWrapping="Wrap"/>
-                                    <StackPanel Orientation="Horizontal" Margin="12,6,0,0">
-                                        <TextBlock x:Name="CkTsText" Style="{StaticResource TbBody}" VerticalAlignment="Center"/>
-                                        <Button x:Name="BtnTsFix" Content="登录" Style="{StaticResource BtnSecondary}"
-                                                Height="28" Padding="12,0" Margin="10,0,0,0" Click="BtnTsFix_Click"/>
-                                        <TextBlock x:Name="TsDetailText" Style="{StaticResource TbHint}"
-                                                   Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="380"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="12,6,0,0">
-                                        <TextBlock x:Name="CkFwText" Style="{StaticResource TbBody}" VerticalAlignment="Center"
-                                                   TextWrapping="Wrap" MaxWidth="480"/>
-                                        <Button x:Name="BtnFwAdd" Content="一键放行" Style="{StaticResource BtnSecondary}"
-                                                Height="28" Padding="12,0" Margin="10,0,0,0" Click="BtnFwAdd_Click"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-
-                    <!-- ④ 高级设置 -->
-                    <Grid x:Name="PageAdv" Visibility="Collapsed">
-                        <Border Style="{StaticResource CardStyle}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="④ 高级设置" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="平时不用动，保持默认即可"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
-
-                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                        <TextBlock Text="端口：" Style="{StaticResource TbBody}" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="PortBox" Style="{StaticResource InputStyle}" Width="80"
-                                                 TextChanged="PortBox_TextChanged" PreviewTextInput="PortBox_PreviewTextInput"/>
-                                        <TextBlock Text="手机地址里的 :3080 就是它"
-                                                   Style="{StaticResource TbHint}" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    </StackPanel>
-
-                                    <StackPanel Margin="0,16,0,0">
-                                        <ToggleButton x:Name="TglRequirePairing" Style="{StaticResource SwitchStyle}"
-                                                      Content="免扫码直接访问（手机打开地址就能用，无需配对）"
-                                                      Checked="TglRequirePairing_Changed" Unchecked="TglRequirePairing_Changed"/>
-                                        <TextBlock Text="关闭配对门禁后，能访问该地址的设备都可直接操作；走 Tailscale 较安全，公共 Wi-Fi 慎用"
-                                                   Style="{StaticResource TbHint}" Margin="0,4,0,0"/>
-                                    </StackPanel>
-
-                                    <StackPanel Margin="0,16,0,0">
-                                        <ToggleButton x:Name="TglAutoTunnel" Style="{StaticResource SwitchStyle}"
-                                                      Content="自动公网隧道（临时随机域名，仅供临时扫码）"
-                                                      Checked="TglAutoTunnel_Changed" Unchecked="TglAutoTunnel_Changed"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                            <TextBlock x:Name="TunnelText" Style="{StaticResource TbHint}"
-                                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                            <Button x:Name="BtnCopyTunnel" Content="复制" Style="{StaticResource BtnGhost}"
-                                                    Height="26" Padding="10,0" Margin="8,0,0,0" IsEnabled="False"
-                                                    Click="BtnCopyTunnel_Click"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-
-                    <!-- ⑤ 存储位置 -->
-                    <Grid x:Name="PageStore" Visibility="Collapsed">
-                        <Border Style="{StaticResource CardStyle}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="⑤ 存储位置" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="dsh 的各类数据都放哪；技能（skill）与 MCP 的配置位置也在这里"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
-                                    <StackPanel x:Name="StoragePanel"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-
-                    <!-- ⑥ 检查更新 -->
-                    <Grid x:Name="PageUpdates" Visibility="Collapsed">
-                        <Border Style="{StaticResource CardStyle}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="⑥ 检查更新" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="dsh 内核、dsh++ 本体、已装插件，三类更新都在这里"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,10"/>
-
-                                    <TextBlock Text="dsh（DeepSeek Harness 内核）" Style="{StaticResource TbBody}"
-                                               FontWeight="SemiBold" Margin="0,4,0,4"/>
-                                    <TextBlock x:Name="DshVerText" Text="当前版本：读取中…" Style="{StaticResource TbSmall}"
-                                               TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="DshRemoteText" Text="最新版本：未检查" Style="{StaticResource TbSmall}"
-                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                        <Button x:Name="BtnDshCheck" Content="检查 dsh 更新" Style="{StaticResource BtnSecondary}"
-                                                Margin="0,0,8,0" Click="BtnDshCheck_Click"/>
-                                        <Button x:Name="BtnDshUpdateStable" Content="更新到正式版" Style="{StaticResource BtnPrimary}"
-                                                IsEnabled="False" Margin="0,0,8,0" Click="BtnDshUpdateStable_Click"/>
-                                        <Button x:Name="BtnDshUpdateAlpha" Content="更新到抢先体验版（alpha）" Style="{StaticResource BtnSecondary}"
-                                                IsEnabled="False" Click="BtnDshUpdateAlpha_Click"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="DshUpdHint" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                               Text="更新会先要求停止 dsh 服务；npm 更新完成后兼容补丁自动重新注入，点「启动服务」即可。"/>
-
-                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,8"/>
-
-                                    <TextBlock Text="dsh++（本程序）" Style="{StaticResource TbBody}"
-                                               FontWeight="SemiBold" Margin="0,4,0,4"/>
-                                    <TextBlock x:Name="AppVerText" Text="当前版本：读取中…" Style="{StaticResource TbSmall}"
-                                               TextWrapping="Wrap"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                        <Button x:Name="BtnAppCheck" Content="检查 dsh++ 更新" Style="{StaticResource BtnSecondary}"
-                                                Margin="0,0,8,0" Click="BtnAppCheck_Click"/>
-                                        <Button x:Name="BtnAppUpdate" Content="一键更新" Style="{StaticResource BtnPrimary}"
-                                                IsEnabled="False" Margin="0,0,8,0" Click="BtnAppUpdate_Click"/>
-                                        <Button x:Name="BtnOpenRel" Content="打开发布页" Style="{StaticResource BtnGhost}"
-                                                Click="BtnOpenReleases_Click"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="AppUpdHint" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                               Text="一键更新会从 GitHub Release 下载新版，自动替换并重启 dsh++；也可以点「打开发布页」手动下载。"/>
-
-                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,8"/>
-
-                                    <TextBlock Text="dsh 插件（profiles 内已安装）" Style="{StaticResource TbBody}"
-                                               FontWeight="SemiBold" Margin="0,4,0,4"/>
-                                    <StackPanel Margin="0,2,0,0">
-                                        <ToggleButton x:Name="TglAutoPlugin" Style="{StaticResource SwitchStyle}"
-                                                      Content="dsh++ 启动时自动更新插件（dsh 运行中则自动跳过）"
-                                                      Checked="TglAutoPlugin_Changed" Unchecked="TglAutoPlugin_Changed"/>
-                                        <TextBlock Text="自动更新在 dsh++ 打开且 dsh 未运行时后台执行，过程写入「⑦ 运行日志」"
-                                                   Style="{StaticResource TbHint}" Margin="0,4,0,0"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="PluginStatText" Text="插件：统计中…" Style="{StaticResource TbSmall}"
-                                               TextWrapping="Wrap" Margin="0,10,0,0"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                        <Button x:Name="BtnPluginRefresh" Content="重新统计" Style="{StaticResource BtnGhost}"
-                                                Margin="0,0,8,0" Click="BtnPluginRefresh_Click"/>
-                                        <Button x:Name="BtnPluginVersions" Content="查看插件版本" Style="{StaticResource BtnSecondary}"
-                                                Margin="0,0,8,0" Click="BtnPluginVersions_Click"/>
-                                        <Button x:Name="BtnPluginUpdate" Content="立即更新全部插件" Style="{StaticResource BtnPrimary}"
-                                                Click="BtnPluginUpdate_Click"/>
-                                    </StackPanel>
-                                    <Border x:Name="PluginListBorder" Visibility="Collapsed"
-                                            Background="{DynamicResource LogBgBrush}" CornerRadius="10"
-                                            Padding="10" Margin="0,10,0,0">
-                                        <TextBox x:Name="PluginListText" Style="{StaticResource TbLog}"
-                                                 IsReadOnly="True" TextWrapping="NoWrap"
-                                                 VerticalScrollBarVisibility="Auto" Height="210"
-                                                 Text="（点「查看插件版本」获取明细）"/>
-                                    </Border>
-                                    <TextBlock x:Name="PluginHintText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                               Text="更新会逐个 profile 执行 pnpm update（GitHub 插件重新拉取最新提交）；需要先停止 dsh，更新完成后「停止→启动」生效。"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-
-                    <!-- ⑦ 运行日志 -->
-                    <Grid x:Name="PageLog" Visibility="Collapsed">
-                        <Border Style="{StaticResource CardStyle}">
-                            <DockPanel>
-                                <StackPanel DockPanel.Dock="Top">
-                                    <TextBlock Text="⑦ 运行日志" Style="{StaticResource TbCardTitle}"/>
-                                    <TextBlock Text="dsh 的实时输出；出问题时先看这里"
-                                               Style="{StaticResource TbSub}" Margin="0,2,0,8"/>
-                                </StackPanel>
-                                <Border Background="{DynamicResource LogBgBrush}" CornerRadius="10" Padding="10">
-                                    <TextBox x:Name="LogBox" Style="{StaticResource TbLog}"
-                                             Text="（尚无日志——点「启动服务」后，dsh 的输出会实时显示在这里）"/>
-                                </Border>
-                            </DockPanel>
-                        </Border>
+                    <Grid Grid.Row="3"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <DockPanel Margin="0,0,0,10"><Button Content="完整诊断 ↗" DockPanel.Dock="Right" HorizontalAlignment="Right" Style="{StaticResource BtnGhost}" Click="BtnDiagnostics_Click"/><TextBlock Text="最近输出" Style="{StaticResource TbBody}" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
+                        <Border Grid.Row="1" Background="{DynamicResource LogBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14"><TextBox x:Name="OverviewLog" Style="{StaticResource TbLog}" Text="暂无输出"/></Border>
                     </Grid>
                 </Grid>
+                <Grid x:Name="PagePlugins" Visibility="Collapsed">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <StackPanel Margin="0,8,0,16"><TextBlock Text="插件管理" Style="{StaticResource PageTitle}"/><TextBlock x:Name="PluginStatText" Style="{StaticResource TbSub}" Margin="0,6,0,0"/><TextBlock x:Name="PluginCheckText" Text="尚未检查远端" Style="{StaticResource TbHint}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+                    <Grid Grid.Row="1" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="120"/><ColumnDefinition Width="124"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="PluginSearch" Tag="搜索插件" Style="{StaticResource InputStyle}" Height="36" ToolTip="搜索插件名称、来源或版本" TextChanged="PluginFilter_Changed" Margin="0,0,10,0" AutomationProperties.Name="搜索插件"/>
+                        <ComboBox x:Name="ProfileFilter" Grid.Column="1" Height="36" VerticalContentAlignment="Center" SelectionChanged="PluginFilter_Changed" ToolTip="Profile" Margin="0,0,10,0"/>
+                        <ComboBox x:Name="PluginStatusFilter" Grid.Column="2" SelectedIndex="0" Height="36" SelectionChanged="PluginFilter_Changed" ToolTip="插件状态" Margin="0,0,8,0">
+                            <ComboBoxItem Content="全部状态"/><ComboBoxItem Content="可维护"/><ComboBoxItem Content="有新版"/><ComboBoxItem Content="固定版本"/><ComboBoxItem Content="本地链接"/><ComboBoxItem Content="官方依赖"/><ComboBoxItem Content="异常 / 来源"/><ComboBoxItem Content="聚合子包"/>
+                        </ComboBox>
+                        <Button x:Name="BtnPluginRefresh" Grid.Column="3" ToolTip="刷新插件列表" AutomationProperties.Name="刷新插件列表" Style="{StaticResource IconButtonStyle}" Click="BtnPluginRefresh_Click" Margin="0,0,8,0"><TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets"/></Button>
+                        <Button x:Name="BtnPluginCheck" Grid.Column="4" Content="检查版本" Style="{StaticResource BtnSecondary}" Click="BtnPluginCheck_Click"/>
+                    </Grid>
+                    <DataGrid x:Name="PluginGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0" RowHeight="60" Background="{DynamicResource BgAppBrush}" BorderThickness="0" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalGridLinesBrush="{DynamicResource BorderBrush}" SelectionMode="Single" SelectionUnit="FullRow" SelectionChanged="PluginGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Width="40"><DataGridTemplateColumn.Header><CheckBox ToolTip="选择当前筛选中可更新的插件" Click="PluginSelectAll_Click"/></DataGridTemplateColumn.Header><DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanUpdate}" VerticalAlignment="Center" HorizontalAlignment="Center" Click="PluginSelection_Click"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="插件 / 来源" Width="2.1*" MinWidth="180"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel VerticalAlignment="Center" Margin="8,0"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/><TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Source}"><Run Text="{Binding Profile, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Source, Mode=OneWay}"/></TextBlock></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                            <DataGridTextColumn Header="已安装" Binding="{Binding Installed}" Width="*" MinWidth="90" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="查询版本" Binding="{Binding Latest}" Width="*" MinWidth="100" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="1.2*" MinWidth="120" IsReadOnly="True"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                        <TextBlock x:Name="PluginDetailText" Style="{StaticResource TbHint}" TextTrimming="CharacterEllipsis" MaxHeight="40" Text="选择插件查看依赖声明"/>
+                        <WrapPanel Margin="0,12,0,0"><Button x:Name="BtnPluginUpdate" Content="更新所选" Style="{StaticResource BtnPrimary}" Click="BtnPluginUpdate_Click" Margin="0,0,8,8"/><Button x:Name="BtnPluginTarget" Content="指定版本…" Style="{StaticResource BtnGhost}" Click="BtnPluginTarget_Click" Margin="0,0,8,8"/><Button Content="在 DSH 中管理 ↗" Style="{StaticResource BtnGhost}" Click="BtnOpenUi_Click" Margin="0,0,8,8"/><Button ToolTip="导出当前插件清单" AutomationProperties.Name="导出当前插件清单" Style="{StaticResource IconButtonStyle}" Click="BtnExportPlugins_Click"><TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets"/></Button></WrapPanel>
+                        <TextBlock x:Name="PluginHintText" Style="{StaticResource TbHint}" Text="本地链接由源码维护；固定版本可通过「指定版本」更改。"/>
+                    </StackPanel>
+                </Grid>
+                <Grid x:Name="PageUpdates" Visibility="Collapsed"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="版本与备份" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="DSH 内核" Style="{StaticResource SectionTitle}" Margin="0,26,0,8"/><TextBlock x:Name="DshVerText" Style="{StaticResource TbBody}"/><TextBlock x:Name="DshRemoteText" Text="尚未检查远端版本" Style="{StaticResource TbHint}" Margin="0,6,0,12"/>
+                    <WrapPanel><Button x:Name="BtnDshCheck" Content="检查版本" Style="{StaticResource BtnGhost}" Click="BtnDshCheck_Click" Margin="0,0,8,8"/><Button x:Name="BtnDshUpdateStable" Content="更新正式版" Style="{StaticResource BtnPrimary}" IsEnabled="False" Click="BtnDshUpdateStable_Click" Margin="0,0,8,8"/><Button x:Name="BtnDshUpdateAlpha" Content="更新预览版" Style="{StaticResource BtnSecondary}" IsEnabled="False" Click="BtnDshUpdateAlpha_Click" Margin="0,0,0,8"/><Button Content="同步官方依赖" Style="{StaticResource BtnGhost}" Click="BtnSyncCompanions_Click" Margin="8,0,0,8"/></WrapPanel><TextBlock x:Name="DshUpdHint" Style="{StaticResource TbHint}"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,22,0,20"/>
+                    <TextBlock Text="dsh++ 控制台" Style="{StaticResource SectionTitle}"/><TextBlock x:Name="AppVerText" Style="{StaticResource TbSmall}" Margin="0,6,0,0"/>
+                    <WrapPanel Margin="0,12,0,0"><Button x:Name="BtnAppCheck" Content="检查更新" Style="{StaticResource BtnGhost}" Click="BtnAppCheck_Click" Margin="0,0,8,8"/><Button x:Name="BtnAppUpdate" Content="安装并重启控制台" Style="{StaticResource BtnSecondary}" IsEnabled="False" Click="BtnAppUpdate_Click" Margin="0,0,8,8"/><Button Content="发布记录 ↗" Style="{StaticResource BtnGhost}" Click="BtnOpenReleases_Click" Margin="0,0,0,8"/></WrapPanel><TextBlock x:Name="AppUpdHint" Style="{StaticResource TbHint}"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,22,0,20"/>
+                    <DockPanel><Button Content="创建备份" Style="{StaticResource BtnGhost}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="BtnBackup_Click"/><TextBlock Text="恢复点" Style="{StaticResource SectionTitle}" VerticalAlignment="Center"/></DockPanel>
+                    <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ComboBox x:Name="BackupList" DisplayMemberPath="Display" Height="36" VerticalContentAlignment="Center" Margin="0,0,10,0" ToolTip="选择恢复点"/><Button x:Name="BtnRestore" Grid.Column="1" Content="恢复" Style="{StaticResource BtnGhost}" Click="BtnRestore_Click"/></Grid>
+                    <TextBlock Text="恢复点包含依赖清单、锁文件与 profile 配置；恢复时会重新安装对应依赖。" Style="{StaticResource TbHint}" Margin="0,10,0,0"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,22,0,20"/>
+                    <DockPanel><Button x:Name="BtnRecoverMaintenance" Content="恢复中断任务" Style="{StaticResource BtnSecondary}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="BtnRecoverMaintenance_Click" IsEnabled="False"/><TextBlock Text="维护记录" Style="{StaticResource SectionTitle}" VerticalAlignment="Center"/></DockPanel>
+                    <TextBlock x:Name="HistoryHint" Style="{StaticResource TbHint}" Margin="0,10,0,8"/>
+                    <ListBox x:Name="HistoryList" DisplayMemberPath="Display" Height="132" Background="{DynamicResource BgAppBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderBrush="{DynamicResource BorderBrush}" SelectionChanged="HistoryList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                    <TextBox x:Name="HistoryDetail" Style="{StaticResource TbLog}" Height="100" Margin="0,10,0,0"/>
+                </StackPanel></ScrollViewer></Grid>
+                <Grid x:Name="PagePhone" Visibility="Collapsed"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="远程连接" Style="{StaticResource PageTitle}"/><TextBlock x:Name="HeroUrlText" Style="{StaticResource MetricText}" TextWrapping="Wrap" Cursor="Hand" MouseLeftButtonUp="HeroUrlText_Click" Margin="0,24,0,10"/><TextBlock x:Name="PhoneHintText" Style="{StaticResource TbHint}"/><Button x:Name="BtnCopyPhone" Content="复制连接地址" Style="{StaticResource BtnPrimary}" Click="BtnCopyPhone_Click" HorizontalAlignment="Left" Margin="0,14,0,24"/>
+                    <TextBlock Text="连接方式" Style="{StaticResource SectionTitle}" Margin="0,0,0,16"/>
+                    <WrapPanel><RadioButton x:Name="RbIp" GroupName="Access" Content="局域网" Style="{StaticResource OptionRadio}" Checked="Access_Changed" Margin="0,0,24,12"/><RadioButton x:Name="RbTs" GroupName="Access" Content="Tailscale" Style="{StaticResource OptionRadio}" Checked="Access_Changed" Margin="0,0,24,12"/><RadioButton x:Name="RbDomain" GroupName="Access" Content="自定义域名" Style="{StaticResource OptionRadio}" Checked="Access_Changed" Margin="0,0,0,12"/></WrapPanel>
+                    <TextBox x:Name="HostBox" Style="{StaticResource InputStyle}" Height="36" MaxWidth="460" HorizontalAlignment="Left" MinWidth="280" ToolTip="自定义域名" LostFocus="HostBox_LostFocus"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,24,0,20"/><TextBlock Text="连接状态" Style="{StaticResource SectionTitle}" Margin="0,0,0,14"/><TextBlock x:Name="CkSvcText" Style="{StaticResource TbBody}" Margin="0,0,0,14"/>
+                    <DockPanel><Button x:Name="BtnTsFix" Content="连接" Style="{StaticResource BtnGhost}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="BtnTsFix_Click"/><StackPanel><TextBlock x:Name="CkTsText" Style="{StaticResource TbBody}"/><TextBlock x:Name="TsDetailText" Style="{StaticResource TbHint}" Margin="0,6,14,0"/></StackPanel></DockPanel>
+                    <DockPanel Margin="0,18,0,0"><Button Content="放行端口" Style="{StaticResource BtnGhost}" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="BtnFwAdd_Click"/><TextBlock x:Name="CkFwText" Text="Windows 防火墙" Style="{StaticResource TbSmall}" VerticalAlignment="Center"/></DockPanel>
+                </StackPanel></ScrollViewer></Grid>
+                <Grid x:Name="PageAdv" Visibility="Collapsed"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="启动设置" Style="{StaticResource PageTitle}"/><TextBlock Text="服务" Style="{StaticResource SectionTitle}" Margin="0,24,0,16"/>
+                    <ToggleButton x:Name="TglLocalOnly" Style="{StaticResource SwitchStyle}" Content="仅本机访问" Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+                    <Grid Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="绑定地址" Style="{StaticResource TbBody}" VerticalAlignment="Center"/><ComboBox x:Name="BindAddressBox" Grid.Column="1" Height="36" VerticalContentAlignment="Center" SelectionChanged="BindAddress_Changed"/></Grid>
+                    <Grid Margin="0,14,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="监听端口" Style="{StaticResource TbBody}" VerticalAlignment="Center"/><TextBox x:Name="PortBox" Grid.Column="1" Width="100" HorizontalAlignment="Left" Style="{StaticResource InputStyle}" LostFocus="PortBox_LostFocus"/></Grid>
+                    <TextBlock x:Name="SettingsHint" Text="网络设置将在下次启动时生效。" Style="{StaticResource TbHint}" Margin="130,12,0,0"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,24,0,20"/><TextBlock Text="更新偏好" Style="{StaticResource SectionTitle}" Margin="0,0,0,16"/>
+                    <ToggleButton x:Name="TglAutoPlugin" Content="打开时检查控制台、内核与 web 插件" Style="{StaticResource SwitchStyle}" Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+                    <ToggleButton x:Name="TglRestartAfterUpdate" Content="更新完成后恢复原先运行的服务" Style="{StaticResource SwitchStyle}" Margin="0,18,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+                    <Grid Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="启动超时" Style="{StaticResource TbBody}" VerticalAlignment="Center"/><TextBox x:Name="StartupTimeoutBox" Grid.Column="1" Style="{StaticResource InputStyle}" LostFocus="TimeoutBox_LostFocus"/><TextBlock Text="秒 · 10–180" Grid.Column="2" Style="{StaticResource TbHint}" Margin="12,0,0,0" VerticalAlignment="Center"/></Grid>
+                    <Grid Margin="0,14,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="安装命令超时" Style="{StaticResource TbBody}" VerticalAlignment="Center"/><TextBox x:Name="UpdateTimeoutBox" Grid.Column="1" Style="{StaticResource InputStyle}" LostFocus="TimeoutBox_LostFocus"/><TextBlock Text="分钟 · 1–60" Grid.Column="2" Style="{StaticResource TbHint}" Margin="12,0,0,0" VerticalAlignment="Center"/></Grid>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,24,0,20"/><TextBlock Text="远程与浏览器" Style="{StaticResource SectionTitle}" Margin="0,0,0,16"/>
+                    <ToggleButton x:Name="TglRequirePairing" Content="远程访问需要配对" Style="{StaticResource SwitchStyle}" Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+                    <ToggleButton x:Name="TglAutoTunnel" Content="自动创建临时公网隧道" Style="{StaticResource SwitchStyle}" Margin="0,18,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+                    <ToggleButton x:Name="TglCompat" Content="旧版浏览器兼容补丁" Style="{StaticResource SwitchStyle}" Margin="0,18,0,0" Checked="Settings_Changed" Unchecked="Settings_Changed"/><TextBlock x:Name="TunnelText" Style="{StaticResource TbHint}" Margin="0,10,0,0"/>
+                </StackPanel></ScrollViewer></Grid>
+                <Grid x:Name="PageStore" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TextBlock Text="数据与路径" Style="{StaticResource PageTitle}" Margin="0,8,0,24"/><ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="StoragePanel"/></ScrollViewer></Grid>
+                <Grid x:Name="PageFreebuff" Visibility="Collapsed"><StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="Freebuff" Style="{StaticResource PageTitle}"/><TextBlock Text="独立服务" Style="{StaticResource TbSub}" Margin="0,6,0,26"/><TextBlock x:Name="FreebuffStateText" Text="未检查" Style="{StaticResource MetricText}"/><TextBlock x:Name="FreebuffStatusText" Style="{StaticResource TbHint}" Margin="0,10,0,16"/>
+                    <WrapPanel><Button x:Name="BtnFreebuffStart" Content="启动" Style="{StaticResource BtnPrimary}" Click="BtnFreebuffStart_Click" Margin="0,0,8,8"/><Button x:Name="BtnFreebuffStop" Content="停止" Style="{StaticResource BtnGhost}" Click="BtnFreebuffStop_Click" Margin="0,0,8,8"/><Button x:Name="BtnFreebuffRefresh" Content="刷新状态" Style="{StaticResource BtnGhost}" Click="BtnFreebuffRefresh_Click" Margin="0,0,0,8"/></WrapPanel>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,24,0,20"/><TextBlock Text="连接信息" Style="{StaticResource SectionTitle}"/><TextBlock x:Name="FreebuffConnectionText" Text="Base URL: ********&#10;API Key: ********" FontFamily="Consolas" Style="{StaticResource TbBody}" Margin="0,14,0,14"/>
+                    <WrapPanel><Button x:Name="BtnFreebuffReveal" Content="显示" Style="{StaticResource BtnGhost}" Click="BtnFreebuffReveal_Click" Margin="0,0,8,8"/><Button x:Name="BtnFreebuffCopy" Content="复制连接信息" Style="{StaticResource BtnGhost}" Click="BtnFreebuffCopy_Click" Margin="0,0,0,8"/></WrapPanel><TextBlock x:Name="FreebuffPathsText" Style="{StaticResource TbHint}" Margin="0,24,0,0"/>
+                </StackPanel></Grid>
+                <Grid x:Name="PageLog" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <TextBlock Text="诊断与日志" Style="{StaticResource PageTitle}" Margin="0,8,0,20"/>
+                    <WrapPanel Grid.Row="1" Margin="0,0,0,14"><Button x:Name="BtnDiagnose" Content="运行诊断" Style="{StaticResource BtnSecondary}" Click="BtnDiagnose_Click" Margin="0,0,8,8"/><Button Content="复制日志" Style="{StaticResource BtnGhost}" Click="BtnCopyLogs_Click" Margin="0,0,8,8"/><Button Content="导出日志…" Style="{StaticResource BtnGhost}" Click="BtnExportLogs_Click" Margin="0,0,8,8"/><CheckBox x:Name="FollowLog" Content="跟随最新" IsChecked="True" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" Margin="12,0,0,8"/></WrapPanel>
+                    <Border Grid.Row="2" Background="{DynamicResource LogBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14"><TextBox x:Name="LogBox" Style="{StaticResource TbLog}" Text="暂无日志"/></Border>
+                </Grid>
+            </Grid>
+            <Border x:Name="TaskPanel" Grid.Row="2" Visibility="Collapsed" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="TaskTitle" Style="{StaticResource TbBody}" FontWeight="SemiBold"/><TextBlock x:Name="TaskDetail" Style="{StaticResource TbHint}" TextTrimming="CharacterEllipsis" MaxHeight="38" Margin="0,6,12,0"/><ProgressBar x:Name="TaskProgress" Height="2" IsIndeterminate="True" Foreground="{DynamicResource PrimaryBrush}" Margin="0,10,14,0"/></StackPanel><Button x:Name="BtnCancelTask" Grid.Column="1" Content="取消" Style="{StaticResource BtnGhost}" VerticalAlignment="Center" Click="BtnCancelTask_Click"/></Grid>
             </Border>
         </Grid>
     </Grid>

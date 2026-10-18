@@ -1,23 +1,56 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Net.Http;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace DshControl;
 
 public class PluginItem
 {
-    public string Name = "";
-    public string Spec = "";
-    public string Installed = "";
+    public string Name { get; set; } = "";
+    public string Spec { get; set; } = "";
+    public string Installed { get; set; } = "";
+    public string Profile { get; set; } = "";
+    public string ProfileDir { get; set; } = "";
+    public string PackageDirectory { get; set; } = "";
+    public string OwnerName { get; set; } = "";
+    public string ResolvedSource { get; set; } = "";
+    public string InstalledCommit { get; set; } = "";
+    public string SourceIssue { get; set; } = "";
+    public bool Selected { get; set; }
+    public string Latest { get; set; } = "未检查";
+    public string Detail { get; set; } = "";
+    public string TargetVersion { get; set; } = "";
+    public string TargetCommit { get; set; } = "";
+    public string CheckError { get; set; } = "";
+    public DateTime? CheckedAt { get; set; }
+    public bool IsIndirect => !string.IsNullOrEmpty(OwnerName);
+    public bool HasUpdate => UpdateService.IsNewer(Latest, Installed)
+        || (!string.IsNullOrEmpty(TargetCommit) && !PluginLock.SameCommit(TargetCommit, InstalledCommit));
+    public string Source => IsIndirect ? "聚合子包 · " + OwnerName : IsLocal ? "本地链接" : IsGit ? "GitHub / Git" : "npm";
+    public bool IsLocal => new[] { "link:", "file:", "workspace:" }.Any(prefix => Spec.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    public bool IsGit => Spec.StartsWith("github:", StringComparison.OrdinalIgnoreCase) || Spec.StartsWith("git+", StringComparison.OrdinalIgnoreCase) || Spec.Contains("github.com");
+    public bool IsCore => Name.StartsWith("@deepseek-ai/");
+    public bool CanUpdate => !IsIndirect && !IsLocal && !IsCore && UpdateService.SpecUpdatable(Spec);
+    public string Policy => IsIndirect ? "随入口维护" : IsLocal ? "本地维护" : IsCore ? "跟随内核" : CanUpdate ? "跟随声明" : "固定版本";
+    public string Status => !string.IsNullOrEmpty(SourceIssue) ? "来源偏差" : !string.IsNullOrEmpty(CheckError) ? "检查失败"
+        : !string.IsNullOrEmpty(Detail) ? Detail : string.IsNullOrEmpty(Installed) ? "未安装" : Policy;
+    public string Description => $"{Name}\n声明：{Spec}\n实际来源：{ResolvedSource}\n{SourceIssue}\n{CheckError}"
+        + (IsIndirect ? "\n更新入口：" + OwnerName : "")
+        + (CheckedAt.HasValue ? $"\n检查时间：{CheckedAt.Value.ToLocalTime():MM-dd HH:mm:ss}" : "\n尚未检查远端");
+
+    internal void CopyCheckFrom(PluginItem previous)
+    {
+        Latest = previous.Latest;
+        Detail = previous.Detail;
+        TargetVersion = previous.TargetVersion;
+        TargetCommit = previous.TargetCommit;
+        CheckedAt = previous.CheckedAt;
+        CheckError = previous.CheckError;
+    }
 }
 
 public class ProfileInfo
@@ -27,20 +60,14 @@ public class ProfileInfo
     public List<PluginItem> Plugins = new();
 }
 
-/// <summary>
-/// 更新中心逻辑（与界面无关）：
-/// 1. dsh（@deepseek-ai/dsh npm 包）版本检查与更新；
-/// 2. dsh++ 自身从 GitHub Release 检查与一键自更新；
-/// 3. dsh profiles 里已安装插件的批量更新（pnpm）。
-/// </summary>
-public class UpdateService
+public partial class UpdateService
 {
     readonly AppConfig cfg;
     readonly DshService svc;
     readonly Action<string> log;
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(30) };
-
     const string Repo = "Jensen-Yao/dsh-plus-plus";
+    string ProfilesRoot => Path.Combine(svc.HomeBase, "profiles");
 
     public UpdateService(AppConfig cfg, DshService svc, Action<string> log = null)
     {
@@ -49,558 +76,176 @@ public class UpdateService
         this.log = log;
     }
 
-    void Log(string m)
-    {
-        try { log?.Invoke(m); } catch { }
-    }
+    void Log(string message) => log?.Invoke(CommandRunner.Redact(message));
 
-    static (int code, string output) RunCapture(string file, string args, string cwd, int timeoutMs)
-    {
-        var psi = new ProcessStartInfo(file, args)
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            WorkingDirectory = Directory.Exists(cwd) ? cwd : Path.GetTempPath(),
-        };
-        ApplyFetchEnv(psi);
-        try
-        {
-            using var p = Process.Start(psi);
-            if (p == null) return (-1, "无法启动进程");
-            var so = p.StandardOutput.ReadToEndAsync();
-            var se = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit(timeoutMs))
-            {
-                try { p.Kill(true); } catch { }
-                return (-1, "命令超时");
-            }
-            Task.WaitAll(new Task[] { so, se }, 3000);
-            var text = (so.Result + Environment.NewLine + se.Result).Trim();
-            return (p.ExitCode, text);
-        }
-        catch (Exception ex)
-        {
-            return (-1, ex.Message);
-        }
-    }
-
-    /// <summary>pnpm/npm 的下载超时与重试配置（大包 + 抖动网络默认 60 秒不够用）。</summary>
-    static void ApplyFetchEnv(ProcessStartInfo psi)
-    {
-        psi.Environment["npm_config_fetch_timeout"] = "900000";
-        psi.Environment["npm_config_fetch_retries"] = "5";
-        psi.Environment["npm_config_fetch_retry_mintimeout"] = "20000";
-        psi.Environment["npm_config_fetch_retry_maxtimeout"] = "120000";
-    }
-
-    static readonly Regex ProgressLine = new(
-        @"resolved\s+(\d+),\s*reused\s+(\d+),\s*downloaded\s+(\d+),\s*added\s+(\d+)",
-        RegexOptions.Compiled);
-
-    /// <summary>
-    /// 流式执行 pnpm/npm 命令：边跑边解析 pnpm 的 Progress 行，
-    /// 每 15 秒回调一次心跳（计数器 / 用时 / 速度 / 预计剩余 / 卡住告警），
-    /// 让用户随时知道「到底在不在下载」。返回退出码与输出尾部。
-    /// </summary>
-    static (int code, string output) RunLive(string file, string args, string cwd, int timeoutMs, Action<string> onTick, Action<string> onLog)
-    {
-        var psi = new ProcessStartInfo(file, args)
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            WorkingDirectory = Directory.Exists(cwd) ? cwd : Path.GetTempPath(),
-        };
-        ApplyFetchEnv(psi);
-        try
-        {
-            using var p = Process.Start(psi);
-            if (p == null) return (-1, "无法启动进程");
-            var sb = new StringBuilder();
-            int resolved = -1, downloaded = -1, added = -1;
-            var samples = new List<(DateTime t, int d)>();
-            var stableResolved = -1; var stableTicks = 0;
-            var lastMove = DateTime.Now;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-
-            void Feed(string line)
-            {
-                if (line.Length == 0) return;
-                lock (sb) sb.AppendLine(line);
-                var m = ProgressLine.Match(line);
-                if (!m.Success) return;
-                _ = int.TryParse(m.Groups[1].Value, out resolved);
-                _ = int.TryParse(m.Groups[3].Value, out downloaded);
-                _ = int.TryParse(m.Groups[4].Value, out added);
-                lastMove = DateTime.Now;
-            }
-
-            var outTask = Task.Run(async () =>
-            { string l; while ((l = await p.StandardOutput.ReadLineAsync()) != null) Feed(l); });
-            var errTask = Task.Run(async () =>
-            { string l; while ((l = await p.StandardError.ReadLineAsync()) != null) Feed(l); });
-
-            string Compose()
-            {
-                // 解析阶段结束后 resolved 稳定，可作下载总量上界估算
-                if (resolved == stableResolved) stableTicks++; else { stableResolved = resolved; stableTicks = 0; }
-                samples.Add((DateTime.Now, downloaded));
-                if (samples.Count > 5) samples.RemoveAt(0);
-                var head = $"下载中… 解析 {Math.Max(resolved, 0)} · 已下载 {Math.Max(downloaded, 0)} · 已装 {Math.Max(added, 0)} ｜ 用时 {(int)sw.Elapsed.TotalMinutes}m{sw.Elapsed.Seconds:d2}s";
-                if (samples.Count >= 2)
-                {
-                    var (t0, d0) = samples[0];
-                    var mins = Math.Max(0.02, (DateTime.Now - t0).TotalMinutes);
-                    var rate = (Math.Max(downloaded, 0) - d0) / mins;
-                    if (rate > 0.01)
-                    {
-                        head += $" ｜ 速度 {rate:F1} 包/分";
-                        if (stableTicks >= 3 && stableResolved > downloaded)
-                        {
-                            var eta = (stableResolved - Math.Max(downloaded, 0)) / rate;
-                            if (eta < 600) head += $" ｜ 预计还需约 {Math.Ceiling(eta)} 分钟";
-                        }
-                    }
-                }
-                if ((DateTime.Now - lastMove).TotalSeconds >= 90)
-                    head += " ｜ ⚠ 90 秒计数无进展（可能在下载大包或等待重试，配置了 15 分钟超时）";
-                return head;
-            }
-
-            var tickCount = 0;
-            using var timer = new System.Threading.Timer(_ =>
-            {
-                try
-                {
-                    tickCount++;
-                    var msg = Compose();
-                    onTick?.Invoke(msg);
-                    if (tickCount % 2 == 0) onLog?.Invoke("    " + msg); // 每 30 秒留一条到运行日志
-                }
-                catch { }
-            }, null, 15000, 15000);
-
-            if (!p.WaitForExit(timeoutMs))
-            {
-                try { p.Kill(true); } catch { }
-                return (-1, "命令超时（超过 " + timeoutMs / 60000 + " 分钟）");
-            }
-            Task.WaitAll(new Task[] { outTask, errTask }, 3000);
-            timer.Dispose();
-            string tail;
-            lock (sb)
-            {
-                var all = sb.ToString();
-                tail = all.Length > 1500 ? all.Substring(all.Length - 1500) : all;
-            }
-            return (p.ExitCode, tail.Trim());
-        }
-        catch (Exception ex)
-        {
-            return (-1, ex.Message);
-        }
-    }
-
-    // ·························· dsh（npm 包） ··························
-
-    string DshPkgJson => Path.Combine(cfg.DshAppDir, "node_modules", "@deepseek-ai", "dsh", "package.json");
-
-    /// <summary>读本地已安装的 dsh 版本（纯文件读取，离线可用）。</summary>
     public (string ver, string err) LocalDshVersion()
     {
         try
         {
-            if (!File.Exists(DshPkgJson)) return ("", "找不到 " + DshPkgJson);
-            using var doc = JsonDocument.Parse(File.ReadAllText(DshPkgJson));
-            return (doc.RootElement.GetProperty("version").GetString() ?? "", null);
+            var manifest = Path.Combine(cfg.DshAppDir, "node_modules", "@deepseek-ai", "dsh", "package.json");
+            using var document = JsonDocument.Parse(File.ReadAllText(manifest));
+            return (document.RootElement.GetProperty("version").GetString() ?? "", null);
         }
-        catch (Exception ex) { return ("", ex.Message); }
+        catch (Exception exception) when (exception is IOException or JsonException)
+        { return ("", exception.Message); }
     }
 
-    /// <summary>查 npm dist-tags：返回 (latest 正式版, alpha 抢先体验版, 错误)。跟随用户 npm 镜像配置。</summary>
-    public (string latest, string alpha, string err) RemoteDshVersions()
+    public (string latest, string alpha, string err) RemoteDshVersions(CancellationToken cancellation = default)
     {
-        var (code, output) = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh dist-tags --json", cfg.DshAppDir, 60000);
-        if (code != 0) return ("", "", string.IsNullOrWhiteSpace(output) ? "npm view 失败" : output.Split('\n').FirstOrDefault()?.Trim());
         try
         {
-            // npm 可能把警告写到 stderr，混在输出里——只截取 JSON 子串解析
-            var start = output.IndexOf('{');
-            var end = output.LastIndexOf('}');
-            if (start < 0 || end <= start)
-                return ("", "", "npm 输出中没有 JSON：" + output.Split('\n').FirstOrDefault()?.Trim());
-            using var doc = JsonDocument.Parse(output.Substring(start, end - start + 1));
-            string Get(string key) =>
-                doc.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-            return (Get("latest") ?? "", Get("alpha") ?? Get("next") ?? "", null);
+            var start = CommandRunner.PackageManager("npm", new[] { "view", "@deepseek-ai/dsh", "dist-tags", "--json" }, cfg.DshAppDir);
+            var result = Task.Run(() => CommandRunner.RunAsync(start, TimeSpan.FromSeconds(40), cancellation: cancellation)).GetAwaiter().GetResult();
+            if (!result.Ok) return ("", "", result.TimedOut ? "版本检查超时，可稍后重试。" : result.Output);
+            using var document = JsonDocument.Parse(result.StandardOutput);
+            string Tag(string tag) => document.RootElement.TryGetProperty(tag, out var value) ? value.GetString() : "";
+            return (Tag("latest"), Tag("alpha") is { Length: > 0 } alpha ? alpha : Tag("next"), null);
         }
-        catch (Exception ex)
-        {
-            return ("", "", "解析 dist-tags 失败：" + ex.Message);
-        }
+        catch (Exception exception) { return ("", "", exception.Message); }
     }
 
     public static bool IsNewer(string remote, string local)
     {
         if (string.IsNullOrWhiteSpace(remote) || string.IsNullOrWhiteSpace(local)) return false;
-        return string.CompareOrdinal(remote.Trim(), local.Trim()) != 0
-            && CompareSemver(remote, local) > 0;
+        static string Clean(string version) => version.Trim().TrimStart('v', 'V').Split('+')[0];
+        var remoteParts = Clean(remote).Split('-', 2);
+        var localParts = Clean(local).Split('-', 2);
+        if (!Version.TryParse(remoteParts[0], out var remoteCore) || !Version.TryParse(localParts[0], out var localCore)) return false;
+        var coreOrder = remoteCore.CompareTo(localCore);
+        if (coreOrder != 0) return coreOrder > 0;
+        if (remoteParts.Length != localParts.Length) return remoteParts.Length == 1;
+        if (remoteParts.Length == 1) return false;
+        var remotePre = remoteParts[1].Split('.');
+        var localPre = localParts[1].Split('.');
+        for (var index = 0; index < Math.Min(remotePre.Length, localPre.Length); index++)
+        {
+            var remoteNumeric = long.TryParse(remotePre[index], out var remoteNumber);
+            var localNumeric = long.TryParse(localPre[index], out var localNumber);
+            var order = remoteNumeric && localNumeric ? remoteNumber.CompareTo(localNumber)
+                : remoteNumeric != localNumeric ? remoteNumeric ? -1 : 1
+                : string.CompareOrdinal(remotePre[index], localPre[index]);
+            if (order != 0) return order > 0;
+        }
+        return remotePre.Length > localPre.Length;
     }
 
-    static int CompareSemver(string a, string b)
-    {
-        var pa = ParseSemver(a);
-        var pb = ParseSemver(b);
-        for (var i = 0; i < 3; i++)
-            if (pa[i] != pb[i]) return pa[i].CompareTo(pb[i]);
-        // 主次补丁相同：预发布版（如 0.1.2-rc.1）小于正式版
-        var preA = HasPrerelease(a);
-        var preB = HasPrerelease(b);
-        if (preA == preB) return string.CompareOrdinal(a, b);
-        return preA ? -1 : 1;
-    }
+    public static string AppVersion() => Assembly.GetEntryAssembly()
+        ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "?";
 
-    static int[] ParseSemver(string v)
-    {
-        var r = new int[3];
-        var core = v.Trim().TrimStart('v', 'V').Split('-')[0].Split('.');
-        for (var i = 0; i < 3 && i < core.Length; i++)
-            _ = int.TryParse(new string(core[i].TakeWhile(char.IsDigit).ToArray()), out r[i]);
-        return r;
-    }
-
-    static bool HasPrerelease(string v) => v.Trim().TrimStart('v', 'V').Contains('-');
-
-    /// <summary>更新 dsh：spec = "latest"（正式版）或 "alpha"（抢先体验版）。要求 dsh 已停止。</summary>
-    public (bool ok, string msg) UpdateDsh(string spec, Action<string> onProgress = null)
-    {
-        if (svc.IsDshRunning())
-            return (false, "dsh 正在运行——请先在「① 服务开关」停止服务，再更新。");
-        var label = spec == "alpha" ? "抢先体验版（alpha）" : "正式版（latest）";
-        Log($"[更新] npm install @deepseek-ai/dsh@{spec}（{label}，可能需要几分钟）…");
-        var (code, output) = RunLive("cmd.exe", $"/c npm install @deepseek-ai/dsh@{spec}", cfg.DshAppDir, 900000, onProgress, m => Log(m));
-        if (output.Length > 1500) output = output.Substring(output.Length - 1500);
-        foreach (var line in output.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(12))
-            Log("    " + line.TrimEnd());
-        if (code != 0)
-            return (false, "npm install 失败（详见运行日志）。检查网络后重试。");
-        var (ver, err) = LocalDshVersion();
-        if (err != null) return (false, "更新后读取版本失败：" + err);
-        Log("[更新] dsh 已更新到 " + ver);
-        return (true, $"dsh 已更新到 {ver}（{label}）。兼容补丁会自动重新注入；点「启动服务」即可。");
-    }
-
-    // ·························· dsh++ 自身 ··························
-
-    public static string AppVersion()
+    public async Task<(string tag, string zipUrl, string err)> LatestAppReleaseAsync(CancellationToken cancellation = default)
     {
         try
         {
-            var asm = System.Reflection.Assembly.GetEntryAssembly();
-            var attr = asm?.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>();
-            if (!string.IsNullOrWhiteSpace(attr?.InformationalVersion))
-                return attr.InformationalVersion.Split('+')[0];
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases/latest");
+            request.Headers.UserAgent.ParseAdd("dsh-plus-plus/" + AppVersion());
+            using var response = await http.SendAsync(request, cancellation);
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
+            var tag = document.RootElement.GetProperty("tag_name").GetString() ?? "";
+            var assets = document.RootElement.GetProperty("assets").EnumerateArray();
+            var asset = assets.FirstOrDefault(asset =>
+                asset.GetProperty("name").GetString() is string name
+                && name.EndsWith("win-x64.zip", StringComparison.OrdinalIgnoreCase));
+            if (asset.ValueKind == JsonValueKind.Undefined) return (tag, null, "没有匹配 Windows x64 的安装包。");
+            return (tag, asset.GetProperty("browser_download_url").GetString(), null);
         }
-        catch { }
-        try
-        {
-            var exe = Environment.ProcessPath;
-            if (exe != null && File.Exists(exe))
-                return FileVersionInfo.GetVersionInfo(exe).ProductVersion;
-        }
-        catch { }
-        return "?";
+        catch (Exception exception) { return ("", null, exception.Message); }
     }
 
-    /// <summary>查 GitHub 最新 Release：返回 (tag, zip 下载地址, 错误)。</summary>
-    public async Task<(string tag, string zipUrl, string err)> LatestAppReleaseAsync()
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases/latest");
-            req.Headers.UserAgent.ParseAdd("dsh-plus-plus");
-            req.Headers.Accept.ParseAdd("application/vnd.github+json");
-            using var res = await http.SendAsync(req);
-            res.EnsureSuccessStatusCode();
-            await using var s = await res.Content.ReadAsStreamAsync();
-            using var doc = await JsonDocument.ParseAsync(s);
-            var tag = doc.RootElement.GetProperty("tag_name").GetString() ?? "";
-            string zip = null;
-            if (doc.RootElement.TryGetProperty("assets", out var assets))
-                foreach (var a in assets.EnumerateArray())
-                {
-                    var name = a.TryGetProperty("name", out var n) ? n.GetString() : null;
-                    if (name != null && name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        zip = a.GetProperty("browser_download_url").GetString();
-                        break;
-                    }
-                }
-            return (tag, zip, zip == null ? "最新 Release 没有 zip 附件" : null);
-        }
-        catch (Exception ex)
-        {
-            return ("", null, ex.Message);
-        }
-    }
-
-    /// <summary>下载新版本 zip，写自替换脚本，返回后由界面关闭进程、脚本完成替换并重启。</summary>
     public async Task<(bool ok, string msg)> ApplyAppUpdateAsync(string zipUrl)
     {
-        var exePath = Environment.ProcessPath;
-        if (exePath == null || !Path.GetFileName(exePath).Equals("dsh-plus-plus.exe", StringComparison.OrdinalIgnoreCase))
-            return (false, "仅发布版（dsh-plus-plus.exe）支持一键更新；开发目录请用源码构建。");
-        var appDir = Path.GetDirectoryName(exePath);
-        var work = Path.Combine(Path.GetTempPath(), "dshpp-update-" + Guid.NewGuid().ToString("N")[..8]);
+        if (!Uri.TryCreate(zipUrl, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "github.com"
+            || !uri.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.OrdinalIgnoreCase))
+            return (false, "更新包地址无效。");
+        var executable = Environment.ProcessPath;
+        var script = BundledAssets.Get("scripts/apply-update.ps1");
+        if (executable == null || !File.Exists(script)) return (false, "更新脚本不完整，请使用完整发布包。");
+        var work = Path.Combine(AppConfig.ConfigDir, "app-updates", Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(work);
-            var zipPath = Path.Combine(work, "update.zip");
-            Log("[自更新] 正在下载 " + zipUrl);
-            using (var res = await http.GetAsync(zipUrl, HttpCompletionOption.ResponseHeadersRead))
+            var archive = Path.Combine(work, "release.zip");
+            using (var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead))
             {
-                res.EnsureSuccessStatusCode();
-                await using var fs = File.Create(zipPath);
-                await res.Content.CopyToAsync(fs);
+                response.EnsureSuccessStatusCode();
+                await using var destination = File.Create(archive);
+                await response.Content.CopyToAsync(destination);
             }
-            ZipFile.ExtractToDirectory(zipPath, work);
-            if (!File.Exists(Path.Combine(work, "dsh-plus-plus.exe")))
-                return (false, "更新包内容不符合预期，已取消。");
-            var pid = Environment.ProcessId;
-            var bat = Path.Combine(Path.GetTempPath(), "dshpp-update-" + Guid.NewGuid().ToString("N")[..6] + ".bat");
-            var sb = new StringBuilder();
-            sb.AppendLine("@echo off");
-            sb.AppendLine(":wait");
-            sb.AppendLine($"tasklist /FI \"PID eq {pid}\" | find \"{pid}\" >nul");
-            sb.AppendLine("if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)");
-            sb.AppendLine($"copy /y \"{Path.Combine(work, "dsh-plus-plus.exe")}\" \"{exePath}\" >nul");
-            var poly = Path.Combine(work, "compat-polyfill.js");
-            if (File.Exists(poly))
-                sb.AppendLine($"copy /y \"{poly}\" \"{Path.Combine(appDir ?? ".", "compat-polyfill.js")}\" >nul");
-            sb.AppendLine($"start \"\" \"{exePath}\"");
-            sb.AppendLine($"rd /s /q \"{work}\"");
-            sb.AppendLine("del \"%~f0\"");
-            File.WriteAllText(bat, sb.ToString(), new UTF8Encoding(false));
-            Process.Start(new ProcessStartInfo("cmd.exe", "/c \"" + bat + "\"")
+            var staged = Path.Combine(work, "staged");
+            ZipFile.ExtractToDirectory(archive, staged);
+            var required = new[] { "dsh-plus-plus.exe", "compat-polyfill.js", "scripts/runtime-host.mjs", "scripts/apply-update.ps1" };
+            if (required.Any(file => !File.Exists(Path.Combine(staged, file))))
+                return (false, "更新包缺少必需文件，未替换当前版本。");
+            var stagedScript = Path.Combine(work, "apply-update.ps1");
+            File.Copy(script, stagedScript);
+            var planPath = Path.Combine(work, "plan.json");
+            File.WriteAllText(planPath, JsonSerializer.Serialize(new
             {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            Log("[自更新] 替换脚本已启动，dsh++ 将自动重启。");
-            return (true, "更新包已就绪，dsh++ 即将自动重启完成更新。");
+                pid = Environment.ProcessId, executable, staged,
+                destination = AppContext.BaseDirectory, backup = Path.Combine(work, "previous"), files = required,
+            }));
+            var start = new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
+            foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", stagedScript, "-Plan", planPath }) start.ArgumentList.Add(argument);
+            Process.Start(start);
+            return (true, "更新包已验证，控制台将重启；旧版本保留在 " + work);
         }
-        catch (Exception ex)
-        {
-            try { Directory.Delete(work, true); } catch { }
-            return (false, "下载或解压失败：" + ex.Message);
-        }
+        catch (Exception exception) { return (false, "更新未完成：" + exception.Message); }
     }
 
-    // ·························· dsh 插件（profiles） ··························
-
-    string ProfilesRoot => Path.Combine(svc.HomeBase, "profiles");
-
-    /// <summary>列出 profiles 里装了插件（dependencies 非空）的 profile 及每个插件的已装版本。</summary>
     public List<ProfileInfo> Profiles()
     {
-        var list = new List<ProfileInfo>();
-        var root = ProfilesRoot;
-        if (!Directory.Exists(root)) return list;
-        foreach (var dir in Directory.GetDirectories(root).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        var profiles = new List<ProfileInfo>();
+        if (!Directory.Exists(ProfilesRoot)) return profiles;
+        foreach (var directory in Directory.GetDirectories(ProfilesRoot).OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
         {
-            var pj = Path.Combine(dir, "package.json");
-            if (!File.Exists(pj)) continue;
+            var manifest = Path.Combine(directory, "package.json");
+            if (!File.Exists(manifest)) continue;
             try
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(pj));
-                if (!doc.RootElement.TryGetProperty("dependencies", out var deps)
-                    || deps.ValueKind != JsonValueKind.Object) continue;
-                var info = new ProfileInfo { Name = Path.GetFileName(dir), Dir = dir };
-                foreach (var d in deps.EnumerateObject())
-                {
-                    if (d.Value.ValueKind != JsonValueKind.String) continue;
-                    info.Plugins.Add(new PluginItem
-                    {
-                        Name = d.Name,
-                        Spec = d.Value.GetString() ?? "",
-                        Installed = InstalledVersion(dir, d.Name),
-                    });
-                }
-                if (info.Plugins.Count > 0) list.Add(info);
+                using var document = JsonDocument.Parse(File.ReadAllText(manifest));
+                if (!document.RootElement.TryGetProperty("dependencies", out var dependencies) || dependencies.ValueKind != JsonValueKind.Object) continue;
+                var profile = new ProfileInfo { Name = Path.GetFileName(directory), Dir = directory };
+                var snapshot = PluginLock.Read(directory);
+                foreach (var dependency in dependencies.EnumerateObject())
+                    if (dependency.Value.ValueKind == JsonValueKind.String)
+                        profile.Plugins.Add(ReadPlugin(profile, dependency.Name, dependency.Value.GetString() ?? "", snapshot));
+                DiscoverBundlePlugins(profile);
+                if (profile.Plugins.Count > 0) profiles.Add(profile);
             }
-            catch { }
+            catch (Exception exception) when (exception is IOException or JsonException)
+            { Log("读取 profile 失败：" + directory + " · " + exception.Message); }
         }
-        return list;
+        return profiles;
     }
 
-    static string InstalledVersion(string profileDir, string pkg)
+    static string InstalledVersion(string profile, string package)
     {
-        var rel = pkg.StartsWith('@') ? pkg.Replace('/', '\\') : pkg;
-        var pj = Path.Combine(profileDir, "node_modules", rel, "package.json");
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(pj));
-            return doc.RootElement.GetProperty("version").GetString() ?? "";
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile, "node_modules",
+                package.Replace('/', Path.DirectorySeparatorChar), "package.json")));
+            return document.RootElement.GetProperty("version").GetString() ?? "";
         }
-        catch { return ""; }
+        catch (Exception exception) when (exception is IOException or JsonException) { return ""; }
     }
 
     public string PluginSummary()
     {
         var profiles = Profiles();
-        if (profiles.Count == 0) return "未发现已安装插件的 profile";
-        var total = profiles.Sum(p => p.Plugins.Count);
-        return $"{profiles.Count} 个 profile，共 {total} 个插件：" +
-               string.Join("；", profiles.Select(p => $"{p.Name}({p.Plugins.Count})"));
+        return $"{profiles.Count} 个 profile · {profiles.Sum(profile => profile.Plugins.Count)} 个插件";
     }
 
-    /// <summary>生成插件版本明细（每个 profile 下逐个插件：已装版本 + 依赖声明）。</summary>
-    public string PluginVersionsReport()
-    {
-        var profiles = Profiles();
-        if (profiles.Count == 0) return "没有在 profiles 下发现已安装的插件。";
-        var sb = new StringBuilder();
-        foreach (var p in profiles)
-        {
-            sb.AppendLine($"【{p.Name}】（{p.Plugins.Count} 个插件）");
-            foreach (var it in p.Plugins)
-            {
-                var installed = string.IsNullOrEmpty(it.Installed) ? "未安装" : it.Installed;
-                sb.AppendLine($"    {it.Name}");
-                sb.AppendLine($"        已装版本：{installed}    依赖声明：{it.Spec}");
-            }
-            sb.AppendLine();
-        }
-        return sb.ToString().TrimEnd();
-    }
-
-    /// <summary>
-    /// 清理 profile 的 dsh.profile.bundles 里无处可解析的悬空声明：
-    /// 既不在 profile 依赖里、也不在 dsh 安装目录 node_modules 里的 bundle，
-    /// 会让 dsh 启动跳过、更会让插件更新器的组合预检失败（报「下次启动会失败」并回滚）。
-    /// 典型成因：官方移除了实验性包，而 profile 声明还留着。改写前自动备份。
-    /// </summary>
-    public List<string> PruneDanglingBundles(string profileName = "web")
-    {
-        var pruned = new List<string>();
-        try
-        {
-            var dir = Path.Combine(ProfilesRoot, profileName);
-            var pjPath = Path.Combine(dir, "package.json");
-            if (!File.Exists(pjPath)) return pruned;
-            var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(pjPath));
-            var bundles = node?["dsh"]?["profile"]?["bundles"] as System.Text.Json.Nodes.JsonArray;
-            if (bundles == null) return pruned;
-
-            var deps = new HashSet<string>();
-            if (node!["dependencies"] is System.Text.Json.Nodes.JsonObject dependencies)
-                foreach (var d in dependencies) deps.Add(d.Key);
-
-            var keep = new System.Text.Json.Nodes.JsonArray();
-            foreach (var b in bundles)
-            {
-                var spec = b?.GetValue<string>();
-                if (string.IsNullOrEmpty(spec)) continue;
-                var name = spec.Split('#')[0];
-                var installed = deps.Contains(name)
-                    || Directory.Exists(Path.Combine(dir, "node_modules", name.Replace('/', '\\')))
-                    || Directory.Exists(Path.Combine(cfg.DshAppDir, "node_modules", name.Replace('/', '\\')));
-                if (installed) keep.Add(spec);
-                else
-                {
-                    pruned.Add(spec);
-                    Log($"[插件] 移除悬空 bundle 声明：{spec}（profile 与 dsh 安装目录均未安装，会卡死更新预检）");
-                }
-            }
-            if (pruned.Count == 0) return pruned;
-
-            var bak = pjPath + ".bak-dshpp-auto";
-            File.Copy(pjPath, bak, true);
-            node["dsh"]["profile"]["bundles"] = keep;
-            File.WriteAllText(pjPath, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
-            Log($"[插件] 已清理 {pruned.Count} 条悬空声明（备份：{Path.GetFileName(bak)}）。");
-        }
-        catch (Exception ex)
-        {
-            Log("[插件] 悬空 bundle 清理失败：" + ex.Message);
-        }
-        return pruned;
-    }
-
-    /// <summary>逐 profile 执行 pnpm update（含 git 插件重新拉取）。要求 dsh 已停止。</summary>
-    public (bool ok, string msg) UpdateAllPlugins(Action<string> onProgress = null)
-    {
-        if (svc.IsDshRunning())
-            return (false, "dsh 正在运行——插件更新需要先停止服务，更新完再启动。");
-        PruneDanglingBundles();
-        var profiles = Profiles();
-        if (profiles.Count == 0) return (true, "没有找到已安装插件的 profile，无需更新。");
-        var (pcode, pout) = RunCapture("cmd.exe", "/c pnpm --version", profiles[0].Dir, 30000);
-        if (pcode != 0)
-            return (false, "找不到可用的 pnpm（pnpm --version 失败）。请先安装 pnpm：npm i -g pnpm");
-
-        var okCount = 0;
-        var fail = new List<string>();
-        var skipped = new List<string>();
-        foreach (var p in profiles)
-        {
-            var updatable = p.Plugins.Where(x => SpecUpdatable(x.Spec)).Select(x => Quote(x.Name)).ToList();
-            if (updatable.Count == 0)
-            {
-                Log($"[插件] 跳过 profile「{p.Name}」：全部为精确钉死版本或本地包，无可更新项。");
-                skipped.Add(p.Name);
-                continue;
-            }
-            Log($"[插件] 更新 profile「{p.Name}」（{updatable.Count}/{p.Plugins.Count} 个插件可更新）…");
-            var names = string.Join(" ", updatable);
-            var (code, output) = RunLive("cmd.exe", "/c pnpm update", p.Dir, 900000, onProgress, m => Log(m));
-            if (output.Length > 1200) output = output.Substring(output.Length - 1200);
-            foreach (var line in output.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(10))
-                Log("    " + line.TrimEnd());
-            if (code != 0) { fail.Add(p.Name); continue; }
-            Log($"[插件] 重新解析「{p.Name}」的可更新插件（含 git 源）…");
-            var (code2, output2) = RunLive("cmd.exe", $"/c pnpm update {names}", p.Dir, 900000, onProgress, m => Log(m));
-            if (output2.Length > 800) output2 = output2.Substring(output2.Length - 800);
-            foreach (var line in output2.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(8))
-                Log("    " + line.TrimEnd());
-            if (code2 != 0) { fail.Add(p.Name + "(重解析)"); continue; }
-            okCount++;
-        }
-        var head = fail.Count == 0
-            ? $"插件更新完成：{okCount} 个 profile 全部成功"
-            : $"插件更新完成 {okCount}/{profiles.Count}，失败：{string.Join("、", fail)}（详见运行日志）";
-        if (skipped.Count > 0)
-            head += $"；已跳过无可更新项：{string.Join("、", skipped)}";
-        return (fail.Count == 0, head + "。重启 dsh 后生效。");
-    }
-
-    /// <summary>
-    /// 判断一个依赖声明是否存在 pnpm update 可作用的空间：
-    /// 精确版本（含 prerelease）、file:/link: 本地包、钉死 tag 或 commit 的 git 源都无可更新项；
-    /// 语义化 range（^ ~ >= *）与未钉 ref 的 git 源才可更新。
-    /// </summary>
     public static bool SpecUpdatable(string spec)
     {
         if (string.IsNullOrWhiteSpace(spec)) return false;
-        var s = spec.Trim();
-        if (s.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
-            || s.StartsWith("link:", StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (s.StartsWith("github:", StringComparison.OrdinalIgnoreCase)
-            || s.StartsWith("git+", StringComparison.OrdinalIgnoreCase)
-            || s.Contains("github.com", StringComparison.OrdinalIgnoreCase))
+        var value = spec.Trim();
+        if (new[] { "file:", "link:", "workspace:" }.Any(prefix => value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) return false;
+        if (value.StartsWith("github:", StringComparison.OrdinalIgnoreCase) || value.StartsWith("git+", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("github.com", StringComparison.OrdinalIgnoreCase))
         {
-            var hash = s.IndexOf('#');
-            if (hash < 0) return true;
-            var refPart = s[(hash + 1)..];
-            return !Regex.IsMatch(refPart, @"^(?:[0-9a-fA-F]{7,40}|v?\d+(?:\.\d+)+.*)$");
+            var marker = value.IndexOf('#');
+            return marker < 0 || !Regex.IsMatch(value[(marker + 1)..], @"^(?:[0-9a-fA-F]{7,40}|v?\d+(?:\.\d+)+.*)$");
         }
-        return !Regex.IsMatch(s, @"^\d+\.\d+\.\d+(?:[-+][\w.]+)?$");
+        return !IsExactVersion(value.StartsWith("npm:", StringComparison.OrdinalIgnoreCase) ? NpmReference("", value).Spec : value);
     }
-
-    static string Quote(string s) =>
-        s.Any(c => char.IsWhiteSpace(c)) ? "\"" + s + "\"" : s;
 }

@@ -42,7 +42,7 @@ public class TsUiState
 /// dsh++ 的全部控制逻辑（与界面无关）：dsh 启停、端口/绑定检测、
 /// 连接方式计算、remote patch 生成、Tailscale 操作、存储位置清单、日志尾随。
 /// </summary>
-public class DshService : IDisposable
+public partial class DshService : IDisposable
 {
     public readonly AppConfig Cfg;
     readonly Action<string> log;
@@ -103,13 +103,14 @@ public class DshService : IDisposable
             var outp = p.StandardOutput.ReadToEnd();
             p.WaitForExit(5000);
             string fallback = null;
+            var ownedPid = RecordedPid();
             foreach (var line in outp.Split('\n'))
             {
                 var m = Regex.Match(line, $@"\s*TCP\s+(\[[^\]]+\]|\S+):({port})\s+\S+\s+LISTENING\s+(\d+)");
                 if (!m.Success) continue;
                 var b = m.Groups[1].Value;
-                if (b == "0.0.0.0" || b == "127.0.0.1") return b;
-                if (fallback == null && b.StartsWith("[")) fallback = "::1";
+                if (int.TryParse(m.Groups[3].Value, out var pid) && pid == ownedPid) return b.Trim('[', ']');
+                fallback ??= b.Trim('[', ']');
             }
             return fallback;
         }
@@ -130,14 +131,31 @@ public class DshService : IDisposable
             using var p = Process.Start(psi);
             var outp = p.StandardOutput.ReadToEnd();
             p.WaitForExit(5000);
+            var ownedPid = RecordedPid();
+            var fallback = 0;
             foreach (var line in outp.Split('\n'))
             {
                 var m = Regex.Match(line, $@"\s*TCP\s+\S+:({port})\s+\S+\s+LISTENING\s+(\d+)");
-                if (m.Success && int.TryParse(m.Groups[2].Value, out var pid)) return pid;
+                if (m.Success && int.TryParse(m.Groups[2].Value, out var pid))
+                {
+                    if (pid == ownedPid) return pid;
+                    if (fallback == 0) fallback = pid;
+                }
             }
+            return fallback;
         }
         catch { }
         return 0;
+    }
+
+    int RecordedPid()
+    {
+        try
+        {
+            using var state = JsonDocument.Parse(File.ReadAllText(RuntimeStatePath));
+            return state.RootElement.GetProperty("pid").GetInt32();
+        }
+        catch (Exception exception) when (exception is IOException or JsonException) { return 0; }
     }
 
     public string DetectLanIp()
@@ -182,7 +200,12 @@ public class DshService : IDisposable
     }
 
     public string LanUrl() => $"http://{DisplayHost()}:{Cfg.Port}";
-    public string LocalUrl() => $"http://127.0.0.1:{Cfg.Port}";
+    public string LocalUrl()
+    {
+        var address = GetBindAddress(Cfg.Port) ?? "127.0.0.1";
+        if (address is "0.0.0.0" or "::") address = "127.0.0.1";
+        return new UriBuilder("http", address, Cfg.Port).Uri.GetLeftPart(UriPartial.Authority);
+    }
 
     // ---------------------------------------------------------------- dsh 控制
 
@@ -193,18 +216,29 @@ public class DshService : IDisposable
             Directory.CreateDirectory(AppConfig.ConfigDir);
             var sb = new StringBuilder();
             sb.AppendLine("# dsh-control generated remote-web-ui overlay (applied last via --patch)");
-            sb.AppendLine("- id: remote-web-ui");
+            var profile = Path.Combine(HomeBase, "profiles", "web", "package.json");
+            var aggregate = false;
+            if (File.Exists(profile))
+            {
+                using var manifest = JsonDocument.Parse(File.ReadAllText(profile));
+                if (manifest.RootElement.TryGetProperty("dependencies", out var dependencies))
+                    aggregate = new[] { "dsh-web", "@linxin666/dsh-web-all", "@linxin666/dsh-web-ui-all" }
+                        .Any(package => dependencies.TryGetProperty(package, out _));
+            }
+            sb.AppendLine(aggregate ? "- id: web-ui-remote-web-ui" : "- id: remote-web-ui");
             sb.AppendLine("  config:");
+            if (aggregate) sb.AppendLine("    plugin: '@linxin666/dsh-remote-web-ui'");
             sb.AppendLine($"    autoTunnel: {(Cfg.AutoTunnel ? "true" : "false")}");
             sb.AppendLine($"    requirePairingForLan: {(Cfg.RequirePairing ? "true" : "false")}");
             var host = DisplayHost();
             if (!Cfg.AutoTunnel && !string.IsNullOrEmpty(host) && !IsIpLiteral(host) && Cfg.AccessMode != "ip")
-                sb.AppendLine($"    publicBaseUrl: http://{host}:{Cfg.Port}");
+                sb.AppendLine("    publicBaseUrl: " + JsonSerializer.Serialize($"http://{host}:{Cfg.Port}"));
             File.WriteAllText(RemotePatch, sb.ToString(), new UTF8Encoding(false));
         }
         catch (Exception ex)
         {
             Log("生成 remote patch 失败: " + ex.Message);
+            throw;
         }
     }
 
@@ -212,87 +246,23 @@ public class DshService : IDisposable
     {
         var sb = new StringBuilder();
         sb.Append($"node \"{BinJs}\" web");
-        if (Cfg.Mode == "lan" && File.Exists(LanPatch)) sb.Append($" --patch \"{LanPatch}\"");
-        EnsureRemotePatch();
         sb.Append($" --patch \"{RemotePatch}\"");
-        sb.Append($" --port {Cfg.Port}");
+        sb.Append($" --host 127.0.0.1 --port {Cfg.Port} --no-open");
         var host = DisplayHost();
         if (!string.IsNullOrEmpty(host) && !IsIpLiteral(host)) sb.Append($" --trusted-host {host}");
         return sb.ToString();
     }
 
     /// <summary>启动 dsh；返回 (是否已发起, 给用户看的提示信息)。</summary>
-    public (bool ok, string message) StartDsh()
-    {
-        if (!File.Exists(BinJs))
-            return (false, $"找不到 dsh 可执行文件：\n{BinJs}\n\n请检查 dsh-app 目录是否正确（config.json 里的 DshAppDir）。");
-        if (IsDshRunning())
-            return (false, $"端口 {Cfg.Port} 已有 dsh 在运行，你改的配置还没有生效。\n\n" +
-                "要应用新配置（端口 / 连接方式 / 域名 / 存储位置），请：\n" +
-                "1. 先点「停止服务」\n" +
-                "2. 等状态变灰\n" +
-                "3. 再点「▶ 启动服务」\n\n" +
-                "（停止服务不会丢失数据）");
-        try
-        {
-            FrontendPatch.Ensure(Cfg, Log);
-            Directory.CreateDirectory(DshLogDir);
-            var cmd = BuildDshCommand();
-            Log("启动命令: " + cmd);
-            Log("（日志写入 " + DshLogPath + "）");
-            var psi = new ProcessStartInfo("cmd.exe", $"/c {cmd} > \"{DshLogPath}\" 2>&1")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = Cfg.DshAppDir,
-            };
-            psi.Environment["DSH_HOME"] = HomeBase;
-            psi.Environment["DSH_AGENTS_HOME"] = AgentsBase;
-            // pnpm/npm 下载超时：dsh 进程及其子进程（含插件市场的更新）都继承，
-            // 避免 60 秒默认超时在大包 + 抖动网络下频繁失败
-            psi.Environment["npm_config_fetch_timeout"] = "900000";
-            psi.Environment["npm_config_fetch_retries"] = "5";
-            psi.Environment["npm_config_fetch_retry_mintimeout"] = "20000";
-            psi.Environment["npm_config_fetch_retry_maxtimeout"] = "120000";
-            var dshProcess = Process.Start(psi);
-            logOffset = File.Exists(DshLogPath) ? new FileInfo(DshLogPath).Length : 0;
-            Log($"存储根: {HomeBase}");
-            Log("已发起启动 (PID " + dshProcess.Id + ")，几秒后生效…");
-            return (true, null);
-        }
-        catch (Exception ex)
-        {
-            return (false, "启动失败: " + ex.Message);
-        }
-    }
-
     public void StopDsh()
     {
-        var pid = GetPidOnPort(Cfg.Port);
-        if (pid > 0)
-        {
-            try
-            {
-                var p = Process.GetProcessById(pid);
-                Log($"正在停止 dsh (PID {pid})…");
-                p.Kill(true);
-                Log("已发送停止指令。");
-            }
-            catch (Exception ex)
-            {
-                Log("停止失败: " + ex.Message);
-            }
-        }
-        else
-        {
-            Log($"端口 {Cfg.Port} 上没有在运行的 dsh。");
-        }
+        Task.Run(() => StopAsync()).GetAwaiter().GetResult();
     }
 
     public void OpenUi()
     {
         if (!IsDshRunning()) { Log("dsh 尚未运行，先点「▶ 启动服务」。"); return; }
-        try { Process.Start(new ProcessStartInfo(LocalUrl()) { UseShellExecute = true }); }
+        try { Process.Start(new ProcessStartInfo(AuthenticatedUrl()) { UseShellExecute = true }); }
         catch (Exception ex) { Log("打开失败: " + ex.Message); }
     }
 

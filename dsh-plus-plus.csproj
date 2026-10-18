@@ -9,13 +9,19 @@
     <RootNamespace>DshControl</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
-    <Version>2.3.0</Version>
+    <Version>3.2.0</Version>
     <Description>dsh++ — DeepSeek Harness 桌面控制台（dsh-plugin）</Description>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <ApplicationIcon>dsh-control.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <EmbeddedResource Include="scripts\runtime-host.mjs" LogicalName="DshControl.assets.runtime-host.mjs" />
+    <EmbeddedResource Include="scripts\apply-update.ps1" LogicalName="DshControl.assets.apply-update.ps1" />
+    <EmbeddedResource Include="compat-polyfill.js" LogicalName="DshControl.assets.compat-polyfill.js" />
+    <Content Include="scripts\*.mjs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="scripts\apply-update.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Remove="icon-gen\**" />
     <EmbeddedResource Remove="icon-gen\**" />
     <None Remove="icon-gen\**" />

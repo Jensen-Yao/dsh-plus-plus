@@ -122,10 +122,10 @@
 <div class="hero">
   <div class="wrap">
     <h2>让手机打开<span>和电脑一样</span>的界面</h2>
-    <p>把 <code class="inline">dsh web</code> 从命令行搬进一个漂亮的桌面应用——一键启停、手机地址、Tailscale、防火墙、存储位置，全部集中管理；手机随时连上同一个会话，思考过程完全同步。</p>
+    <p>dsh++ 3.2 集中管理服务、插件、版本、恢复点和远程连接。后台检查聚合插件与实际来源，更新后核对版本或提交；失败后尝试恢复，插件市场重启时保持远程接续。</p>
     <div class="tags">
       <span>Windows 10/11</span><span>.NET 8 · WPF</span><span>深浅双主题</span>
-      <span>Tailscale</span><span>手机远程</span><span>Freebuff · Docker</span><span>免扫码</span><span>MIT</span>
+      <span>Tailscale</span><span>插件管理</span><span>中断恢复</span><span>Freebuff · Docker</span><span>MIT</span>
     </div>
     <div class="cta">
       <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载最新版</a>
@@ -152,13 +152,13 @@
     <h3>功能</h3>
     <p class="lead">一个窗口，管好 dsh 的全部日常操作</p>
     <div class="grid">
-      <div class="card"><h4><span class="dot"></span>一键启停</h4><p>启动 / 停止 dsh web，实时显示运行状态与对外绑定（0.0.0.0 全网卡 或 127.0.0.1 仅本机）。</p></div>
+      <div class="card"><h4><span class="dot"></span>一键启停</h4><p>启动、停止与重启 dsh web，验证网页就绪。本机入口保持 localhost，远程入口绑定所选网卡的具体 IP。</p></div>
       <div class="card"><h4><span class="dot"></span>手机入口</h4><p>同一 Wi-Fi / 自定义域名 / Tailscale 三种方式，大字地址一键复制，附「缺什么点什么」检查清单。</p></div>
       <div class="card"><h4><span class="dot"></span>Tailscale 集成</h4><p>登录 / 连接 / 断开 / 安装一体化，跨网络也完全实时，状态与 ts.net 域名实时显示。</p></div>
       <div class="card"><h4><span class="dot"></span>存储位置管理</h4><p>settings / sessions / storages / profiles / skills / agent-presets 一页看清；技能与 MCP 位置一键直达，主目录可直接修改。</p></div>
-      <div class="card"><h4><span class="dot"></span>免扫码直连</h4><p>一键关闭手机远程插件的配对门禁，手机打开地址即可使用。</p></div>
+      <div class="card"><h4><span class="dot"></span>插件维护与恢复</h4><p>按来源、状态和 profile 筛选插件；精确版本与本地链接保留。维护前确认范围，记录阶段与结果，中断后可明确恢复。</p></div>
       <div class="card"><h4><span class="dot"></span>兼容补丁自愈</h4><p>自动为网页入口注入 polyfill，旧手机浏览器也能用；npm 更新覆盖后自动重新注入。</p></div>
-      <div class="card"><h4><span class="dot"></span>Freebuff 独立组件</h4><p>不随 dsh++ 自动启动；需要时在「② Freebuff 服务」页单独启动 / 停止本机 Docker 中的 Freebuff2API。Base URL 和 API Key 默认隐藏，可显示或复制，不改其他客户端配置。</p></div>
+      <div class="card"><h4><span class="dot"></span>Freebuff 独立组件</h4><p>不随 dsh++ 自动启动；在「Freebuff」页单独启停。连接信息默认隐藏，可显示或复制。</p></div>
     </div>
   </div>
 </section>
@@ -166,12 +166,12 @@
 <section>
   <div class="wrap">
     <h3>快速上手</h3>
-    <p class="lead">从下载到手机打开，不超过两分钟</p>
+    <p class="lead">需要已安装 DSH、Node.js 和 .NET 8 Desktop Runtime</p>
     <div class="steps">
-      <div class="step"><div class="n"></div><div><b>启动服务</b><span>下载发布版双击运行，在「① 服务开关」点「▶ 启动服务」，几秒后状态点变绿。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>启动 Freebuff（可选）</b><span>需要时切到「② Freebuff 服务」点击「启动 Freebuff」，可复制本地 Base URL 和 API Key 给 DSH、Codex 或其他 Agent。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>复制手机地址</b><span>切到「③ 手机入口」，选好连接方式（推荐 Tailscale），点「复制手机地址」发到手机。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>手机打开</b><span>手机浏览器打开地址，和电脑看到的是同一个会话，思考过程逐字同步。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>确认安装</b><span>完整解压发布包，在「数据与路径」确认 DSH 安装目录和数据目录。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>启动服务</b><span>在「服务总览」启动，等待网页就绪后打开 DSH。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>远程连接（可选）</b><span>在「远程连接」选择连接方式，在「启动设置」关闭仅本机访问并重启。新配置默认要求远程配对。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>维护插件</b><span>在「插件管理」检查版本并勾选更新；维护记录与恢复点位于「版本与备份」。</span></div></div>
     </div>
   </div>
 </section>
@@ -179,9 +179,9 @@
 <section>
   <div class="wrap">
     <h3>Freebuff 本地服务</h3>
-    <p class="lead">可选组件，不随 dsh++ 启动，需要时在「② Freebuff 服务」页单独启动 / 停止</p>
+    <p class="lead">可选组件，不随 dsh++ 启动，需要时在「Freebuff」页单独启动 / 停止</p>
 <pre>Base URL: http://127.0.0.1:18080/v1
-API Key:  fb-local-key
+API Key:  使用本机配置的值
 
 项目目录：F:\freebuffapi
 配置文件：F:\freebuffapi\.env</pre>
@@ -192,11 +192,11 @@ API Key:  fb-local-key
 <section>
   <div class="wrap">
     <h3>从源码构建</h3>
-    <p class="lead">Windows 10/11 + .NET 8 SDK，已安装 DeepSeek Harness（≥ 0.1.0-rc.6）</p>
+    <p class="lead">Windows 10/11 + .NET 8 SDK，当前启动流程已在 DSH 0.2.1-rc.2 验证</p>
 <pre>git clone https://github.com/Jensen-Yao/dsh-plus-plus.git
 cd dsh-plus-plus
 dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
-# 产物：publish/dsh-plus-plus.exe + compat-polyfill.js</pre>
+# 产物：完整 publish 目录，保留 EXE、compat-polyfill.js 与 scripts</pre>
     <p style="margin-top:14px;font-size:14px;color:var(--text2)">无窗口自检：<code class="inline">dsh-plus-plus.exe --smoke</code>（诊断写到 %TEMP%\dsh-control-smoke.txt）</p>
   </div>
 </section>

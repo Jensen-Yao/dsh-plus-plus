@@ -1,19 +1,19 @@
-using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using Path = System.IO.Path;
+using Microsoft.Win32;
 
 namespace DshControl;
 
@@ -21,949 +21,828 @@ public partial class MainWindow : Window
 {
     readonly AppConfig cfg;
     readonly DshService svc;
-    readonly FreebuffService freebuff;
     readonly UpdateService upd;
+    readonly FreebuffService freebuff;
     readonly DispatcherTimer refreshTimer;
-    bool fwDone;
+    List<PluginItem> plugins = new();
+    CancellationTokenSource taskCancellation;
+    CancellationTokenSource pluginCheckCancellation;
+    Task<PluginCheckSummary> pluginCheckTask;
+    CancellationTokenSource readCancellation = new();
+    Task versionChecks = Task.CompletedTask;
+    bool joiningReadChecks;
     bool ready;
+    bool busy;
+    bool refreshing;
+    bool closingAfterTask;
+    bool selfUpdating;
     bool freebuffReveal;
-    int freebuffProbe;
-    bool dshUpdating;
-    bool appUpdating;
-    bool pluginsUpdating;
-    bool appUpdateReady;
     string appUpdateZip;
-    DateTime lastTunnelQuery;
-    Action tsAction = () => { };
+    string stableVersion;
+    string alphaVersion;
+    string activeBind;
+    bool running;
+    DateTime lastRemoteRefresh;
+    readonly string[] pageNames = { "服务总览", "插件管理", "版本与备份", "远程连接", "启动设置", "数据与路径", "Freebuff", "诊断与日志" };
 
     public MainWindow()
     {
         cfg = App.Cfg;
         svc = new DshService(cfg, Log);
-        InitializeComponent();
-        freebuff = new FreebuffService(cfg.FreebuffDir, Log, cfg.FreebuffDocker);
         upd = new UpdateService(cfg, svc, Log);
+        freebuff = new FreebuffService(cfg.FreebuffDir, Log, cfg.FreebuffDocker);
+        InitializeComponent();
         RestoreWindow();
-        SetThemeIcon();
-        VersionText.Text = "v" + UpdateService.AppVersion() + " · 设置里的「检查更新」可升级";
-        FreebuffPathsText.Text = $"项目目录：{cfg.FreebuffDir}\nDocker Desktop：{cfg.FreebuffDocker}";
+        LoadSettings();
+        ReloadPlugins();
+        RefreshBackups();
         BuildStorageRows();
-        LoadConfigToUi();
-        FrontendPatch.Ensure(cfg, Log);
-        svc.StartLogTail(AppendLogLines);
-        RefreshAll();
+        RefreshVersions();
+        VersionText.Text = "v" + UpdateService.AppVersion();
+        FreebuffPathsText.Text = cfg.FreebuffDir + "\n" + cfg.FreebuffDocker;
         ready = true;
-        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 6);
-        // 更新中心：先显示本地信息，再后台自动检查（dsh++ 新版本 / 插件自动更新）
-        Dispatcher.BeginInvoke(new Action(InitUpdateCenter), DispatcherPriority.Background);
-        if (App.UiCheck)
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                try { new HelpWindow { Owner = this }.ShowDialog(); }
-                catch (Exception ex)
-                {
-                    File.WriteAllText(Path.Combine(Path.GetTempPath(), "uicheck-err.txt"), ex.ToString());
-                }
-            }));
-
-        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        refreshTimer.Tick += (s, e) => RefreshAll();
-        refreshTimer.Start();
+        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 7);
+        svc.StartLogTail(AppendLog);
+        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        refreshTimer.Tick += async (_, _) => await RefreshAsync();
         Closing += OnClosing;
-        // Freebuff 组件不随 dsh++ 启动自动启动：只查一次状态，由「② Freebuff 服务」页面手动启动/停止
-        Dispatcher.BeginInvoke(new Action(() => RefreshFreebuffStatus(true)), DispatcherPriority.Background);
+        Loaded += async (_, _) =>
+        {
+            if (App.RenderDirectory != null)
+            {
+                await RefreshAsync();
+                await RenderCheck.CaptureAsync(this, App.RenderDirectory);
+                selfUpdating = true;
+                Close();
+                return;
+            }
+            refreshTimer.Start();
+            await RefreshAsync();
+            var controlsReady = BtnStart.IsEnabled || BtnRestart.IsEnabled;
+            if (cfg.CheckUpdatesOnLaunch)
+            {
+                versionChecks = Task.WhenAll(CheckAppAsync(), CheckRuntimeAsync());
+                await Task.WhenAll(versionChecks, CheckPluginsInUiAsync(plugins.Where(plugin => plugin.Profile == "web").ToList()));
+            }
+            if (App.UiCheck)
+            {
+                var directory = Path.Combine(AppConfig.ConfigDir, "ui-check");
+                await RenderCheck.CaptureAsync(this, directory);
+                var checkedCount = plugins.Count(plugin => plugin.Profile == "web" && plugin.CheckedAt.HasValue);
+                File.WriteAllText(Path.Combine(directory, "startup-report.json"), JsonSerializer.Serialize(new
+                {
+                    version = UpdateService.AppVersion(), controlsReadyDuringChecks = controlsReady,
+                    startupPluginChecks = checkedCount, expectedPluginChecks = plugins.Count(plugin => plugin.Profile == "web"),
+                    checkText = PluginCheckText.Text,
+                }));
+                selfUpdating = true;
+                Close();
+            }
+        };
     }
 
-    Brush B(string key) => (Brush)FindResource(key);
-    Brush ToneBrush(Tone t) => t switch
-    {
-        Tone.Green => B("SuccessBrush"),
-        Tone.Orange => B("WarningBrush"),
-        _ => B("TextTertiaryBrush"),
-    };
+    Brush BrushFor(string key) => (Brush)FindResource(key);
 
-    // ---------------------------------------------------------------- 主题
-
-    void SetThemeIcon()
+    internal void SelectPage(int index) => NavList.SelectedIndex = index;
+    internal void ChangeTheme(string theme)
     {
-        var geom = cfg.Theme == "dark" ? "SunGeom" : "MoonGeom";
-        ThemeIcon.Data = (Geometry)FindResource(geom);
-    }
-
-    /// <summary>
-    /// 主题热切换：替换 Application 资源字典里的主题层（index 0），
-    /// 所有画刷都是 DynamicResource，界面即时换肤，不再需要重启应用。
-    /// </summary>
-    void ApplyTheme()
-    {
-        var theme = string.Equals(cfg.Theme, "light", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark";
-        var dicts = Application.Current.Resources.MergedDictionaries;
-        var source = new Uri($"Themes/{theme}.xaml", UriKind.Relative);
-        if (dicts.Count > 0)
-            dicts[0] = new ResourceDictionary { Source = source };
-        else
-            dicts.Insert(0, new ResourceDictionary { Source = source });
-        SetThemeIcon();
+        cfg.Theme = theme;
+        var dictionaries = Application.Current.Resources.MergedDictionaries;
+        dictionaries[0] = new ResourceDictionary { Source = new Uri($"Themes/{(theme == "light" ? "Light" : "Dark")}.xaml", UriKind.Relative) };
     }
 
     void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
-        cfg.Theme = cfg.Theme == "dark" ? "light" : "dark";
+        ChangeTheme(cfg.Theme == "dark" ? "light" : "dark");
         cfg.Save();
-        ApplyTheme();
     }
 
-    // ---------------------------------------------------------------- 窗口状态记忆
-
-    /// <summary>恢复上次的位置/尺寸/最大化状态；坐标不在虚拟桌面内时回退居中。</summary>
     void RestoreWindow()
     {
-        if (cfg.WinMaximized)
+        if (!double.IsNaN(cfg.WinWidth)) Width = Math.Max(MinWidth, cfg.WinWidth);
+        if (!double.IsNaN(cfg.WinHeight)) Height = Math.Max(MinHeight, cfg.WinHeight);
+        if (cfg.WinMaximized) WindowState = WindowState.Maximized;
+        else if (!double.IsNaN(cfg.WinLeft) && !double.IsNaN(cfg.WinTop)
+            && cfg.WinLeft >= SystemParameters.VirtualScreenLeft
+            && cfg.WinLeft < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100
+            && cfg.WinTop >= SystemParameters.VirtualScreenTop
+            && cfg.WinTop < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
         {
-            WindowState = WindowState.Maximized;
-            return;
-        }
-        if (double.IsNaN(cfg.WinLeft) || double.IsNaN(cfg.WinTop)) return; // 首次启动：保持 CenterScreen
-        var w = double.IsNaN(cfg.WinWidth) ? Width : cfg.WinWidth;
-        var h = double.IsNaN(cfg.WinHeight) ? Height : cfg.WinHeight;
-        w = Math.Max(MinWidth, w); h = Math.Max(MinHeight, h);
-        // 窗口左上角必须落在虚拟桌面（所有显示器的并集）内，防止拔显示器后窗口跑到屏幕外
-        var vl = SystemParameters.VirtualScreenLeft;
-        var vt = SystemParameters.VirtualScreenTop;
-        var vr = vl + SystemParameters.VirtualScreenWidth;
-        var vb = vt + SystemParameters.VirtualScreenHeight;
-        if (cfg.WinLeft < vl - 40 || cfg.WinLeft > vr - 80 || cfg.WinTop < vt - 40 || cfg.WinTop > vb - 80)
-        {
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            return;
-        }
-        WindowStartupLocation = WindowStartupLocation.Manual;
-        Left = cfg.WinLeft; Top = cfg.WinTop; Width = w; Height = h;
-    }
-
-    void SaveWindowState()
-    {
-        if (WindowState == WindowState.Minimized) return; // 最小化时不记坐标
-        if (WindowState == WindowState.Maximized)
-        {
-            cfg.WinMaximized = true;
-        }
-        else
-        {
-            cfg.WinMaximized = false;
-            cfg.WinLeft = Left; cfg.WinTop = Top;
-            cfg.WinWidth = Width; cfg.WinHeight = Height;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = cfg.WinLeft;
+            Top = cfg.WinTop;
         }
     }
-
-    // ---------------------------------------------------------------- 页面切换
 
     void NavList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PageSvc == null) return;
-        var idx = NavList.SelectedIndex;
-        PageSvc.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
-        PageFreebuff.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
-        PagePhone.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
-        PageAdv.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
-        PageStore.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
-        PageUpdates.Visibility = idx == 5 ? Visibility.Visible : Visibility.Collapsed;
-        PageLog.Visibility = idx == 6 ? Visibility.Visible : Visibility.Collapsed;
-        if (idx == 5) RefreshUpdateStats();
-        if (ready && cfg.LastPage != idx)
-        {
-            cfg.LastPage = idx;
-            cfg.Save();
-        }
+        if (!ready) return;
+        var pages = new[] { PageSvc, PagePlugins, PageUpdates, PagePhone, PageAdv, PageStore, PageFreebuff, PageLog };
+        var selected = Math.Clamp(NavList.SelectedIndex, 0, pages.Length - 1);
+        for (var index = 0; index < pages.Length; index++)
+            pages[index].Visibility = index == selected ? Visibility.Visible : Visibility.Collapsed;
+        BreadcrumbText.Text = "工作空间 / " + pageNames[selected];
+        if (App.RenderDirectory == null) { cfg.LastPage = selected; cfg.Save(); }
+        if (selected == 2) RefreshBackups();
+        if (selected == 6 && App.RenderDirectory == null) _ = RefreshFreebuffAsync();
     }
 
-    // ---------------------------------------------------------------- 配置
-
-    void LoadConfigToUi()
+    void LoadSettings()
     {
-        PortBox.Text = cfg.Port.ToString();
         TglLocalOnly.IsChecked = cfg.Mode == "local";
-        var am = cfg.AccessMode ?? "ip";
-        RbIp.IsChecked = am == "ip";
-        RbDomain.IsChecked = am == "domain";
-        RbTs.IsChecked = am == "tailscale";
-        HostBox.Text = cfg.DisplayHost ?? "";
-        HostBox.IsEnabled = am == "domain";
+        TglAutoPlugin.IsChecked = cfg.CheckUpdatesOnLaunch;
+        TglRestartAfterUpdate.IsChecked = cfg.RestartAfterUpdate;
+        TglRequirePairing.IsChecked = cfg.RequirePairing;
         TglAutoTunnel.IsChecked = cfg.AutoTunnel;
-        TglRequirePairing.IsChecked = !cfg.RequirePairing;
-        TglAutoPlugin.IsChecked = cfg.AutoUpdatePlugins;
-        UpdatePhonePreview();
+        TglCompat.IsChecked = cfg.BrowserCompatibilityPatch;
+        PortBox.Text = cfg.Port.ToString();
+        StartupTimeoutBox.Text = cfg.StartupTimeoutSeconds.ToString();
+        UpdateTimeoutBox.Text = cfg.UpdateTimeoutMinutes.ToString();
+        HostBox.Text = cfg.DisplayHost;
+        RbIp.IsChecked = cfg.AccessMode == "ip";
+        RbTs.IsChecked = cfg.AccessMode == "tailscale";
+        RbDomain.IsChecked = cfg.AccessMode == "domain";
+        HostBox.IsEnabled = cfg.AccessMode == "domain";
+        BindAddressBox.ItemsSource = new[] { "自动（按连接方式）" }.Concat(DshService.AvailableAddresses()).ToList();
+        BindAddressBox.SelectedItem = string.IsNullOrEmpty(cfg.BindHost) ? "自动（按连接方式）" : cfg.BindHost;
     }
 
-    void SetAccess(string mode)
-    {
-        if (!ready) return;
-        cfg.AccessMode = mode;
-        HostBox.IsEnabled = mode == "domain";
-        cfg.Save();
-        UpdatePhonePreview();
-    }
-
-    void PortBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (!ready) return;
-        if (int.TryParse(PortBox.Text.Trim(), out var p) && p >= 1024 && p <= 65535 && cfg.Port != p)
-        {
-            cfg.Port = p;
-            cfg.Save();
-            UpdatePhonePreview();
-        }
-    }
-
-    void PortBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        e.Handled = e.Text.Any(c => !char.IsDigit(c));
-    }
-
-    void TglLocalOnly_Changed(object sender, RoutedEventArgs e)
+    void Settings_Changed(object sender, RoutedEventArgs e)
     {
         if (!ready) return;
         cfg.Mode = TglLocalOnly.IsChecked == true ? "local" : "lan";
-        cfg.Save();
-        UpdatePhonePreview();
-    }
-
-    void RbIp_Checked(object sender, RoutedEventArgs e) { if (ready && RbIp.IsChecked == true) SetAccess("ip"); }
-    void RbDomain_Checked(object sender, RoutedEventArgs e) { if (ready && RbDomain.IsChecked == true) SetAccess("domain"); }
-    void RbTs_Checked(object sender, RoutedEventArgs e) { if (ready && RbTs.IsChecked == true) SetAccess("tailscale"); }
-
-    void HostBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (!ready) return;
-        var host = HostBox.Text.Trim();
-        // 常见粘贴错误自动清洗：http(s):// 前缀、结尾斜杠、空白
-        var cleaned = System.Text.RegularExpressions.Regex.Replace(host, @"^https?://", "",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase).TrimEnd('/');
-        if (cleaned != host)
-        {
-            var caret = HostBox.CaretIndex - (host.Length - cleaned.Length);
-            HostBox.Text = cleaned;
-            HostBox.CaretIndex = Math.Max(0, caret);
-            return; // Text 改写会再次触发本事件，由那一次落盘
-        }
-        cfg.DisplayHost = host;
-        cfg.Save();
-        UpdatePhonePreview();
-    }
-
-    void TglAutoTunnel_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!ready) return;
+        cfg.CheckUpdatesOnLaunch = TglAutoPlugin.IsChecked == true;
+        cfg.RestartAfterUpdate = TglRestartAfterUpdate.IsChecked == true;
+        cfg.RequirePairing = TglRequirePairing.IsChecked == true;
         cfg.AutoTunnel = TglAutoTunnel.IsChecked == true;
+        cfg.BrowserCompatibilityPatch = TglCompat.IsChecked == true;
+        cfg.AutoUpdatePlugins = false;
         cfg.Save();
-        lastTunnelQuery = DateTime.MinValue;
+        SettingsHint.Text = "已保存。网络设置将在下次启动时生效。";
+        _ = RefreshAsync();
     }
 
-    void TglRequirePairing_Changed(object sender, RoutedEventArgs e)
+    void BindAddress_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!ready) return;
-        cfg.RequirePairing = !(TglRequirePairing.IsChecked == true);
+        cfg.BindHost = BindAddressBox.SelectedIndex <= 0 ? "" : BindAddressBox.SelectedItem as string;
+        cfg.Save();
+        SettingsHint.Text = "已保存绑定地址，下次启动生效。";
+    }
+
+    void PortBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (busy || running || !int.TryParse(PortBox.Text.Trim(), out var port) || port < 1024 || port > 65535)
+        {
+            PortBox.Text = cfg.Port.ToString();
+            SettingsHint.Text = running ? "先停止服务再修改端口。" : "端口范围为 1024–65535。";
+            return;
+        }
+        cfg.Port = port;
         cfg.Save();
     }
 
-    void UpdatePhonePreview()
+    void TimeoutBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (HeroUrlText == null) return;
-        if (cfg.Mode == "local")
+        if (!ready || busy) return;
+        var startup = sender == StartupTimeoutBox;
+        var box = (TextBox)sender;
+        var minimum = startup ? 10 : 1;
+        var maximum = startup ? 180 : 60;
+        if (!int.TryParse(box.Text, out var value) || value < minimum || value > maximum)
         {
-            HeroUrlText.Text = "（已关闭——取消「只让本机使用」勾选后开放）";
-            HeroUrlText.Foreground = B("TextSecondaryBrush");
-            HeroUrlText.Tag = null;
-            BtnCopyPhone.IsEnabled = false;
-            PhoneHintText.Text = "你在①里勾选了「只让本机使用」，取消勾选后这里会出现手机地址";
+            box.Text = (startup ? cfg.StartupTimeoutSeconds : cfg.UpdateTimeoutMinutes).ToString();
+            SettingsHint.Text = $"超时范围为 {minimum}–{maximum} " + (startup ? "秒。" : "分钟。");
             return;
         }
-        BtnCopyPhone.IsEnabled = true;
-        HeroUrlText.Foreground = B("PrimaryBrush");
-        var url = $"http://{svc.DisplayHost()}:{cfg.Port}";
-        HeroUrlText.Text = url;
-        HeroUrlText.Tag = url;
-        string hint;
-        if (cfg.AccessMode == "tailscale")
-            hint = TailscaleCli.Exists(cfg) && TailscaleCli.Status(cfg).Ips.Count > 0
-                ? "Tailscale 已就绪：手机在任何网络都能打开，完全实时"
-                : "Tailscale 还没登录：先完成下面「连接检查」第 2 项";
-        else if (cfg.AccessMode == "domain")
-            hint = "确保域名解析到这台电脑；修改后需先「停止服务」再「启动服务」才生效";
-        else
-            hint = "手机需要和电脑在同一网络（同一 Wi-Fi 或手机热点）";
-        PhoneHintText.Text = hint;
+        if (startup) cfg.StartupTimeoutSeconds = value;
+        else cfg.UpdateTimeoutMinutes = value;
+        cfg.Save();
+        SettingsHint.Text = "已保存超时设置。";
     }
 
-    // ---------------------------------------------------------------- 按钮动作
-
-    void BtnStart_Click(object sender, RoutedEventArgs e)
+    void Access_Changed(object sender, RoutedEventArgs e)
     {
-        var (ok, message) = svc.StartDsh();
-        if (!ok) MessageBox.Show(this, message, "启动失败", MessageBoxButton.OK, MessageBoxImage.Information);
+        if (!ready) return;
+        cfg.AccessMode = RbTs.IsChecked == true ? "tailscale" : RbDomain.IsChecked == true ? "domain" : "ip";
+        cfg.BindHost = "";
+        BindAddressBox.SelectedIndex = 0;
+        HostBox.IsEnabled = cfg.AccessMode == "domain";
+        cfg.Save();
+        _ = RefreshAsync();
     }
 
-    void BtnStop_Click(object sender, RoutedEventArgs e) => svc.StopDsh();
+    void HostBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        var value = HostBox.Text.Trim().TrimEnd('/');
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)) value = uri.Host;
+        if (!string.IsNullOrEmpty(value) && Uri.CheckHostName(value) != UriHostNameType.Dns)
+        {
+            SettingsHint.Text = "域名格式无效。";
+            HostBox.Text = cfg.DisplayHost;
+            return;
+        }
+        cfg.DisplayHost = value;
+        HostBox.Text = value;
+        cfg.Save();
+        _ = RefreshAsync();
+    }
+
+    async Task RunTaskAsync(string title, Func<CancellationToken, Task<(bool ok, string message)>> operation, bool reloadPlugins = true)
+    {
+        if (busy) return;
+        busy = true;
+        await StopPluginCheckAsync();
+        taskCancellation = new();
+        TaskPanel.Visibility = Visibility.Visible;
+        TaskTitle.Text = title;
+        TaskDetail.Text = "正在准备…";
+        TaskProgress.Visibility = Visibility.Visible;
+        BtnCancelTask.IsEnabled = true;
+        BtnCancelTask.Visibility = Visibility.Visible;
+        SetControlsEnabled(false);
+        try
+        {
+            var result = await operation(taskCancellation.Token);
+            TaskTitle.Text = result.ok ? "已完成 · " + title : "未完成 · " + title;
+            TaskDetail.Text = result.message;
+            TaskDetail.ToolTip = result.message;
+            Log(result.message);
+            if (!result.ok)
+            {
+                FailureText.Text = result.message;
+                FailurePanel.Visibility = Visibility.Visible;
+            }
+            else FailurePanel.Visibility = Visibility.Collapsed;
+        }
+        catch (OperationCanceledException) { TaskDetail.Text = "已取消"; }
+        catch (Exception exception)
+        {
+            TaskTitle.Text = "未完成 · " + title;
+            TaskDetail.Text = CommandRunner.Redact(exception.Message);
+            Log(TaskDetail.Text);
+        }
+        finally
+        {
+            busy = false;
+            taskCancellation.Dispose();
+            taskCancellation = null;
+            TaskProgress.Visibility = Visibility.Collapsed;
+            BtnCancelTask.Visibility = Visibility.Collapsed;
+            SetControlsEnabled(true);
+            if (reloadPlugins) ReloadPlugins();
+            else ApplyPluginFilter();
+            RefreshVersions();
+            RefreshBackups();
+            await RefreshAsync();
+            if (closingAfterTask) Close();
+            else if (reloadPlugins && cfg.CheckUpdatesOnLaunch)
+                _ = CheckPluginsInUiAsync(plugins.Where(plugin => plugin.Profile == "web").ToList());
+        }
+    }
+
+    void SetControlsEnabled(bool enabled)
+    {
+        PagePlugins.IsEnabled = enabled;
+        PageUpdates.IsEnabled = enabled;
+        PageAdv.IsEnabled = enabled;
+        PageStore.IsEnabled = enabled;
+        PagePhone.IsEnabled = enabled;
+        BtnStart.IsEnabled = enabled && !running;
+        BtnRestart.IsEnabled = enabled && running;
+        BtnStop.IsEnabled = enabled && running;
+        BtnPluginCheck.IsEnabled = enabled && pluginCheckTask is not { IsCompleted: false };
+    }
+
+    void Progress(string message)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            TaskDetail.Text = CommandRunner.Redact(message);
+            TaskDetail.ToolTip = TaskDetail.Text;
+        });
+    }
+
+    async void BtnStart_Click(object sender, RoutedEventArgs e)
+        => await RunTaskAsync("启动 DSH", async cancellation => await Task.Run(() => svc.StartAsync(cancellation)));
+    async void BtnStop_Click(object sender, RoutedEventArgs e)
+        => await RunTaskAsync("停止 DSH", async _ => await Task.Run(() => svc.StopAsync()));
+    async void BtnRestart_Click(object sender, RoutedEventArgs e)
+        => await RunTaskAsync("重启 DSH", async cancellation => await Task.Run(() => svc.RestartAsync(cancellation)));
     void BtnOpenUi_Click(object sender, RoutedEventArgs e) => svc.OpenUi();
-    void BtnFwAdd_Click(object sender, RoutedEventArgs e) { svc.AddFirewallRule(); fwDone = true; }
-
-    // ---------------------------------------------------------------- 更新中心
-
-    void InitUpdateCenter()
+    void BtnDiagnostics_Click(object sender, RoutedEventArgs e) => NavList.SelectedIndex = 7;
+    void BtnCancelTask_Click(object sender, RoutedEventArgs e)
     {
-        AppVerText.Text = "当前版本：" + UpdateService.AppVersion();
-        var (ver, err) = upd.LocalDshVersion();
-        DshVerText.Text = err == null ? "当前版本：" + ver : "当前版本：读取失败（" + err + "）";
-        RefreshUpdateStats();
-        // 后台检查一次 dsh++ 新版本（不阻塞、失败不打扰）
-        Task.Run(async () =>
-        {
-            var (tag, zip, e2) = await upd.LatestAppReleaseAsync();
-            _ = Dispatcher.BeginInvoke(new Action(() =>
-            {
-                if (e2 != null) return; // 静默失败，需要时手动点「检查」
-                var latest = (tag ?? "").TrimStart('v', 'V');
-                if (UpdateService.IsNewer(latest, UpdateService.AppVersion()))
-                {
-                    appUpdateReady = true;
-                    appUpdateZip = zip;
-                    BtnAppUpdate.IsEnabled = true;
-                    AppUpdHint.Text = $"发现新版本 {tag}（当前 {UpdateService.AppVersion()}）——点「一键更新」自动下载并重启。";
-                    Log("[自更新] 发现 dsh++ 新版本 " + tag);
-                }
-                else
-                {
-                    AppUpdHint.Text = $"dsh++ 已是最新（{UpdateService.AppVersion()}）。";
-                }
-            }));
-        });
-        // 插件自动更新：开关打开且 dsh 未运行时执行一次
-        if (cfg.AutoUpdatePlugins && !svc.IsDshRunning())
-        {
-            Task.Run(() =>
-            {
-                var (ok, msg) = upd.UpdateAllPlugins(m => Dispatcher.BeginInvoke(new Action(() => PluginHintText.Text = m)));
-                Log("[插件] 自动更新：" + msg);
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    PluginHintText.Text = msg;
-                    RefreshUpdateStats();
-                }));
-            });
-        }
-        else if (cfg.AutoUpdatePlugins)
-        {
-            Log("[插件] dsh 正在运行，跳过启动时自动更新；停止服务后可在「⑥ 检查更新」手动更新。");
-        }
+        taskCancellation?.Cancel();
+        BtnCancelTask.IsEnabled = false;
+        TaskDetail.Text = "正在取消；如已修改依赖，将先恢复备份。";
     }
 
-    void RefreshUpdateStats()
+    void RefreshVersions()
     {
-        if (pluginsUpdating) return;
-        try { PluginStatText.Text = "插件：" + upd.PluginSummary(); } catch { }
+        var (version, error) = upd.LocalDshVersion();
+        OverviewVersion.Text = error == null ? version : "未安装";
+        DshVerText.Text = error == null ? "已安装 " + version : error;
+        AppVerText.Text = "当前版本 " + UpdateService.AppVersion();
     }
 
-    async void BtnDshCheck_Click(object sender, RoutedEventArgs e)
+    void ReloadPlugins()
     {
-        if (dshUpdating) return;
-        BtnDshCheck.IsEnabled = false;
-        DshUpdHint.Text = "正在检查 npm 上的版本（正式版 / 抢先体验版）…";
+        var previous = plugins;
+        plugins = upd.Profiles().SelectMany(profile => profile.Plugins).ToList();
+        foreach (var plugin in plugins)
+        {
+            var match = previous.FirstOrDefault(old => old.ProfileDir == plugin.ProfileDir && old.Name == plugin.Name && old.OwnerName == plugin.OwnerName
+                && old.Spec == plugin.Spec && old.Installed == plugin.Installed && old.ResolvedSource == plugin.ResolvedSource && old.PackageDirectory == plugin.PackageDirectory);
+            if (match != null) { plugin.CopyCheckFrom(match); plugin.Selected = match.Selected && plugin.CanUpdate; }
+        }
+        var selectedProfile = ProfileFilter.SelectedItem as string;
+        ProfileFilter.ItemsSource = new[] { "全部 Profile" }.Concat(plugins.Select(plugin => plugin.Profile).Distinct()).ToList();
+        ProfileFilter.SelectedItem = selectedProfile != null && ProfileFilter.Items.Contains(selectedProfile)
+            ? selectedProfile : ProfileFilter.Items.Contains("web") ? "web" : "全部 Profile";
+        ApplyPluginFilter();
+        OverviewPlugins.Text = $"web · {plugins.Count(plugin => plugin.Profile == "web" && !plugin.IsIndirect)} 入口";
+    }
+
+    void ApplyPluginFilter()
+    {
+        if (PluginGrid == null || PluginSearch == null || ProfileFilter == null || PluginStatusFilter == null) return;
+        var query = PluginSearch.Text.Trim();
+        var profile = ProfileFilter.SelectedItem as string;
+        var visible = plugins.Where(plugin => (string.IsNullOrEmpty(profile) || profile == "全部 Profile" || plugin.Profile == profile)
+            && (plugin.Name + " " + plugin.Source + " " + plugin.Spec + " " + plugin.Installed + " " + plugin.Status).Contains(query, StringComparison.OrdinalIgnoreCase)
+            && MatchesPluginStatus(plugin, PluginStatusFilter.SelectedIndex)).ToList();
+        PluginGrid.ItemsSource = visible;
+        PluginStatText.Text = $"{visible.Count} 项 · {visible.Count(plugin => plugin.IsIndirect)} 子包 · {visible.Count(plugin => plugin.HasUpdate)} 有更新 · {visible.Count(plugin => plugin.SourceIssue.Length > 0)} 来源提示";
+        UpdateSelectedCount();
+    }
+
+    internal static bool MatchesPluginStatus(PluginItem plugin, int filter) => filter switch
+    {
+        1 => plugin.CanUpdate,
+        2 => plugin.HasUpdate,
+        3 => !plugin.IsIndirect && !plugin.CanUpdate && !plugin.IsLocal && !plugin.IsCore,
+        4 => plugin.IsLocal,
+        5 => plugin.IsCore,
+        6 => string.IsNullOrEmpty(plugin.Installed) || plugin.CheckError.Length > 0 || plugin.SourceIssue.Length > 0 || (plugin.Detail ?? "").StartsWith("检查失败"),
+        7 => plugin.IsIndirect,
+        _ => true,
+    };
+
+    void PluginFilter_Changed(object sender, RoutedEventArgs e) => ApplyPluginFilter();
+    void PluginGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PluginGrid.SelectedItem is PluginItem plugin)
+        {
+            PluginDetailText.Text = plugin.IsIndirect ? "更新入口：" + plugin.OwnerName + " · " + plugin.Spec : plugin.Spec;
+            PluginDetailText.ToolTip = CommandRunner.Redact(plugin.Description);
+            PluginHintText.Text = plugin.SourceIssue.Length > 0 ? plugin.SourceIssue : plugin.CheckError.Length > 0 ? "检查失败，悬停查看详情。"
+                : plugin.IsIndirect ? "由所属入口安装，不单独提升为直接依赖。" : "本地链接由源码维护；固定版本可通过「指定版本」更改。";
+            BtnPluginTarget.IsEnabled = !busy && !plugin.IsIndirect && !plugin.IsLocal && !plugin.IsCore;
+        }
+        else BtnPluginTarget.IsEnabled = false;
+    }
+    void PluginSelection_Click(object sender, RoutedEventArgs e) => UpdateSelectedCount();
+    void UpdateSelectedCount()
+    {
+        var count = plugins.Count(plugin => plugin.Selected);
+        BtnPluginUpdate.Content = count == 0 ? "更新所选" : $"更新所选 ({count})";
+        BtnPluginUpdate.IsEnabled = !busy && count > 0;
+    }
+    void PluginSelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox checkbox && PluginGrid.ItemsSource is IEnumerable<PluginItem> visible)
+            foreach (var plugin in visible.Where(plugin => plugin.CanUpdate)) plugin.Selected = checkbox.IsChecked == true;
+        PluginGrid.Items.Refresh();
+        UpdateSelectedCount();
+    }
+    async void BtnPluginRefresh_Click(object sender, RoutedEventArgs e) { await StopPluginCheckAsync(); ReloadPlugins(); }
+
+    async void BtnPluginCheck_Click(object sender, RoutedEventArgs e)
+    {
+        var profile = ProfileFilter.SelectedItem as string;
+        await CheckPluginsInUiAsync(plugins.Where(plugin => profile == "全部 Profile" || plugin.Profile == profile).ToList());
+    }
+
+    async Task CheckPluginsInUiAsync(List<PluginItem> scope)
+    {
+        if (busy || pluginCheckTask is { IsCompleted: false }) return;
+        using var cancellation = new CancellationTokenSource();
+        pluginCheckCancellation = cancellation;
+        BtnPluginCheck.IsEnabled = false;
+        PluginCheckText.Text = "正在后台检查插件…";
         try
         {
-            var (local, lerr) = upd.LocalDshVersion();
-            var (latest, alpha, rerr) = await Task.Run(() => upd.RemoteDshVersions());
-            if (lerr != null) { DshUpdHint.Text = "读取本地版本失败：" + lerr; return; }
-            DshVerText.Text = "当前版本：" + local;
-            if (rerr != null) { DshUpdHint.Text = "检查失败：" + (rerr.Split('\n').FirstOrDefault()?.Trim() ?? rerr); return; }
-            var stableNewer = UpdateService.IsNewer(latest, local);
-            var alphaNewer = UpdateService.IsNewer(alpha, local);
-            BtnDshUpdateStable.IsEnabled = stableNewer;
-            BtnDshUpdateAlpha.IsEnabled = alphaNewer;
-            DshRemoteText.Text = $"最新版本：正式 {latest} · 抢先体验 {alpha}" + (string.IsNullOrEmpty(alpha) ? "（源未提供）" : "");
-            if (stableNewer || alphaNewer)
-                DshUpdHint.Text = $"当前 {local}，有可更新的版本——正式版更稳，抢先体验版（对应 GitHub alpha Release）功能更新但可能不稳定。";
-            else
-                DshUpdHint.Text = $"当前 {local}，正式版与抢先体验版都已是最新或更高。";
+            pluginCheckTask = Task.Run(() => upd.CheckPluginsAsync(scope, cancellation.Token, message => Dispatcher.BeginInvoke(() => PluginCheckText.Text = message)));
+            var summary = await pluginCheckTask;
+            PluginCheckText.Text = $"{DateTime.Now:HH:mm} 检查完成 · {summary.Updates} 有更新 · {summary.Failed} 失败 · {summary.SourceIssues} 来源提示";
+            OverviewPluginCheck.Text = summary.Failed > 0 || summary.SourceIssues > 0 ? "插件检查需要关注" : summary.Updates > 0 ? $"插件发现 {summary.Updates} 项更新" : "web 插件已检查";
         }
-        finally { BtnDshCheck.IsEnabled = true; }
-    }
-
-    async void DoDshUpdate(string spec)
-    {
-        if (dshUpdating) return;
-        var label = spec == "alpha" ? "抢先体验版" : "正式版";
-        if (svc.IsDshRunning())
+        catch (OperationCanceledException) { PluginCheckText.Text = "检查已取消，未修改依赖。"; }
+        catch (Exception error) { PluginCheckText.Text = "检查未完成：" + CommandRunner.Redact(error.Message); }
+        finally
         {
-            var r = MessageBox.Show(this, $"更新 dsh 需要先停止服务。现在停止并更新到{label}吗？",
-                "更新 dsh", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            if (r != MessageBoxResult.OK) return;
-            svc.StopDsh();
-            for (var i = 0; i < 15 && svc.IsDshRunning(); i++) await Task.Delay(1000);
-            if (svc.IsDshRunning())
-            {
-                MessageBox.Show(this, "服务未能停止，请稍后手动重试。", "更新 dsh", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-        }
-        dshUpdating = true;
-        BtnDshUpdateStable.IsEnabled = false;
-        BtnDshUpdateAlpha.IsEnabled = false;
-        BtnDshCheck.IsEnabled = false;
-        DshUpdHint.Text = $"正在更新 dsh 到{label}（npm install，可能需要几分钟，详见运行日志）…";
-        try
-        {
-            var (ok, msg) = await Task.Run(() => upd.UpdateDsh(spec, m => Dispatcher.BeginInvoke(new Action(() => DshUpdHint.Text = m))));
-            DshUpdHint.Text = msg;
-            if (ok)
-            {
-                var (ver, _) = upd.LocalDshVersion();
-                DshVerText.Text = "当前版本：" + ver;
-                DshRemoteText.Text = "最新版本：未检查";
-                try { FrontendPatch.Ensure(cfg, Log); } catch { }
-            }
-            else
-            {
-                BtnDshUpdateStable.IsEnabled = true;
-                BtnDshUpdateAlpha.IsEnabled = true;
-            }
-        }
-        finally { dshUpdating = false; BtnDshCheck.IsEnabled = true; }
-    }
-
-    void BtnDshUpdateStable_Click(object sender, RoutedEventArgs e) => DoDshUpdate("latest");
-    void BtnDshUpdateAlpha_Click(object sender, RoutedEventArgs e) => DoDshUpdate("alpha");
-
-    async void BtnAppCheck_Click(object sender, RoutedEventArgs e)
-    {
-        if (appUpdating) return;
-        BtnAppCheck.IsEnabled = false;
-        AppUpdHint.Text = "正在检查 GitHub 最新 Release…";
-        try
-        {
-            var (tag, zip, err) = await upd.LatestAppReleaseAsync();
-            if (err != null) { AppUpdHint.Text = "检查失败：" + err; return; }
-            var latest = (tag ?? "").TrimStart('v', 'V');
-            if (UpdateService.IsNewer(latest, UpdateService.AppVersion()))
-            {
-                appUpdateReady = true;
-                appUpdateZip = zip;
-                BtnAppUpdate.IsEnabled = true;
-                AppUpdHint.Text = $"发现新版本 {tag}（当前 {UpdateService.AppVersion()}）——点「一键更新」自动下载并重启。";
-            }
-            else
-            {
-                BtnAppUpdate.IsEnabled = false;
-                AppUpdHint.Text = $"dsh++ 已是最新（{UpdateService.AppVersion()}）。";
-            }
-        }
-        finally { BtnAppCheck.IsEnabled = true; }
-    }
-
-    async void BtnAppUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        if (appUpdating || !appUpdateReady) return;
-        var r = MessageBox.Show(this, "将下载新版本并自动替换重启（更新期间 dsh++ 会关闭一次，dsh 服务不受影响）。继续吗？",
-            "更新 dsh++", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (r != MessageBoxResult.OK) return;
-        appUpdating = true;
-        BtnAppUpdate.IsEnabled = false;
-        AppUpdHint.Text = "正在下载更新包…";
-        var (ok, msg) = await upd.ApplyAppUpdateAsync(appUpdateZip);
-        if (ok)
-        {
-            AppUpdHint.Text = msg;
-            await Task.Delay(800);
-            Application.Current.Shutdown();
-        }
-        else
-        {
-            AppUpdHint.Text = msg;
-            appUpdating = false;
-            BtnAppUpdate.IsEnabled = true;
+            pluginCheckCancellation = null;
+            BtnPluginCheck.IsEnabled = !busy;
+            ApplyPluginFilter();
         }
     }
 
-    void BtnOpenReleases_Click(object sender, RoutedEventArgs e)
+    async Task StopPluginCheckAsync()
     {
-        try { Process.Start(new ProcessStartInfo("https://github.com/Jensen-Yao/dsh-plus-plus/releases") { UseShellExecute = true }); } catch { }
-    }
-
-    void BtnPluginRefresh_Click(object sender, RoutedEventArgs e) => RefreshUpdateStats();
-
-    void BtnPluginVersions_Click(object sender, RoutedEventArgs e)
-    {
-        if (PluginListBorder.Visibility == Visibility.Visible)
-        {
-            PluginListBorder.Visibility = Visibility.Collapsed;
-            BtnPluginVersions.Content = "查看插件版本";
-            return;
-        }
-        BtnPluginVersions.Content = "隐藏插件版本";
-        PluginListText.Text = "正在读取插件版本…";
-        PluginListBorder.Visibility = Visibility.Visible;
-        Task.Run(() =>
-        {
-            var report = upd.PluginVersionsReport();
-            Dispatcher.BeginInvoke(new Action(() => PluginListText.Text = report));
-        });
+        pluginCheckCancellation?.Cancel();
+        var current = pluginCheckTask;
+        if (current == null) return;
+        try { await current; }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { Log("插件检查未完成：" + error.Message); }
     }
 
     async void BtnPluginUpdate_Click(object sender, RoutedEventArgs e)
     {
-        if (pluginsUpdating) return;
-        if (svc.IsDshRunning())
-        {
-            MessageBox.Show(this, "插件更新需要先停止 dsh 服务：请到「① 服务开关」点「停止服务」，再回来更新。",
-                "更新插件", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        pluginsUpdating = true;
-        BtnPluginUpdate.IsEnabled = false;
-        BtnPluginRefresh.IsEnabled = false;
-        PluginHintText.Text = "正在更新插件（逐 profile 执行 pnpm update，详见运行日志）…";
+        var selected = plugins.Where(plugin => plugin.Selected).ToList();
+        if (selected.Count == 0 || !ConfirmMaintenance("更新所选插件", selected.Select(plugin =>
+            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"已安装 {plugin.Installed} → 声明 {plugin.Spec}")))) return;
+        await RunTaskAsync("更新插件", async cancellation =>
+            await Task.Run(() => upd.UpdatePluginsAsync(selected, Progress, cancellation)));
+    }
+
+    async void BtnPluginTarget_Click(object sender, RoutedEventArgs e)
+    {
+        if (PluginGrid.SelectedItem is not PluginItem plugin || plugin.IsIndirect || plugin.IsLocal || plugin.IsCore) return;
+        var proposed = plugin.Spec;
+        if (System.Text.RegularExpressions.Regex.IsMatch(plugin.Latest ?? "", @"^v?\d+\.\d+\.\d+(?:-[\w.-]+)?$"))
+            proposed = plugin.IsGit ? plugin.Spec.Split('#')[0] + "#" + plugin.Latest : plugin.Latest;
+        var dialog = new InputDialog("指定插件版本", plugin.Name + "\n版本 / 范围 / github:owner/repository#ref", proposed) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        var target = dialog.Value.Trim();
+        if (!UpdateService.ValidSpec(target)) { PluginHintText.Text = "目标版本无效；不接受本地路径或命令。"; return; }
+        if (!ConfirmMaintenance("指定插件版本", new[] { new PlannedChange(plugin.Name, $"{plugin.Installed} → {target}") })) return;
+        await RunTaskAsync("更新 " + plugin.Name, async cancellation =>
+            await Task.Run(() => upd.UpdatePluginsAsync(new[] { plugin }, Progress, cancellation, target)));
+    }
+
+    async Task CheckRuntimeAsync()
+    {
+        BtnDshCheck.IsEnabled = false;
+        DshUpdHint.Text = "正在检查版本…";
         try
         {
-            var (ok, msg) = await Task.Run(() => upd.UpdateAllPlugins(m => Dispatcher.BeginInvoke(new Action(() => PluginHintText.Text = m))));
-            PluginHintText.Text = msg;
-            Log("[插件] " + msg);
+            var versions = await Task.Run(() => upd.RemoteDshVersions(readCancellation.Token));
+            if (versions.err != null) { DshUpdHint.Text = versions.err; return; }
+            stableVersion = versions.latest;
+            alphaVersion = versions.alpha;
+            var (local, _) = upd.LocalDshVersion();
+            DshRemoteText.Text = $"正式版 {stableVersion} · 预览版 {alphaVersion}";
+            BtnDshUpdateStable.IsEnabled = !busy && UpdateService.IsNewer(stableVersion, local);
+            BtnDshUpdateAlpha.IsEnabled = !busy && UpdateService.IsNewer(alphaVersion, local);
+            DshUpdHint.Text = "已完成版本检查";
         }
-        finally
-        {
-            pluginsUpdating = false;
-            BtnPluginUpdate.IsEnabled = true;
-            BtnPluginRefresh.IsEnabled = true;
-            RefreshUpdateStats();
-        }
+        catch (Exception exception) { DshUpdHint.Text = exception.Message; }
+        finally { BtnDshCheck.IsEnabled = true; }
     }
-
-    void TglAutoPlugin_Changed(object sender, RoutedEventArgs e)
+    async void BtnDshCheck_Click(object sender, RoutedEventArgs e)
     {
-        if (!ready) return;
-        cfg.AutoUpdatePlugins = TglAutoPlugin.IsChecked == true;
-        cfg.Save();
+        var check = CheckRuntimeAsync();
+        versionChecks = Task.WhenAll(versionChecks, check);
+        await check;
+    }
+    async Task UpdateRuntimeAsync(string channel)
+    {
+        if (!ConfirmMaintenance("更新 DSH 内核", new[] { new PlannedChange("@deepseek-ai/dsh", "目标通道 " + channel
+            + " · 当前查询 " + (channel == "latest" ? stableVersion : alphaVersion)),
+            new PlannedChange("web profile", "仅同步官方伴随包，不批量更新社区插件。") })) return;
+        await RunTaskAsync("更新 DSH 内核", async cancellation =>
+            await Task.Run(() => upd.UpdateRuntimeAsync(channel, Progress, cancellation)));
+        DshUpdHint.Text = TaskDetail.Text;
+        BtnDshUpdateStable.IsEnabled = false;
+        BtnDshUpdateAlpha.IsEnabled = false;
+    }
+    async void BtnDshUpdateStable_Click(object sender, RoutedEventArgs e) => await UpdateRuntimeAsync("latest");
+    async void BtnDshUpdateAlpha_Click(object sender, RoutedEventArgs e) => await UpdateRuntimeAsync("alpha");
+    async void BtnSyncCompanions_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmMaintenance("同步官方伴随包", new[] { new PlannedChange("web profile", "将官方依赖与已安装内核提供的对应版本保持一致。") })) return;
+        await RunTaskAsync("同步官方伴随包", async cancellation =>
+            await Task.Run(() => upd.SynchronizeCompanionsAsync(Progress, cancellation)));
     }
 
-    void BtnFreebuffStart_Click(object sender, RoutedEventArgs e)
-        => RunFreebuffOperation(() => freebuff.Start());
+    bool ConfirmMaintenance(string title, IEnumerable<PlannedChange> changes)
+        => new UpdatePreviewWindow(title, changes, running, cfg.RestartAfterUpdate) { Owner = this }.ShowDialog() == true;
 
-    void BtnFreebuffStop_Click(object sender, RoutedEventArgs e)
-        => RunFreebuffOperation(() => freebuff.Stop());
+    async Task CheckAppAsync()
+    {
+        BtnAppCheck.IsEnabled = false;
+        try
+        {
+            var (tag, zip, error) = await upd.LatestAppReleaseAsync(readCancellation.Token);
+            appUpdateZip = error == null && UpdateService.IsNewer(tag.TrimStart('v', 'V'), UpdateService.AppVersion()) ? zip : null;
+            BtnAppUpdate.IsEnabled = appUpdateZip != null;
+            AppUpdHint.Text = error != null ? "检查未完成：" + error : appUpdateZip != null ? "新版本 " + tag : "当前已是最新版本";
+        }
+        finally { BtnAppCheck.IsEnabled = true; }
+    }
+    async void BtnAppCheck_Click(object sender, RoutedEventArgs e)
+    {
+        var check = CheckAppAsync();
+        versionChecks = Task.WhenAll(versionChecks, check);
+        await check;
+    }
+    async void BtnAppUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || appUpdateZip == null) return;
+        var result = await upd.ApplyAppUpdateAsync(appUpdateZip);
+        AppUpdHint.Text = result.msg;
+        if (result.ok) { selfUpdating = true; Close(); }
+    }
+    void BtnOpenReleases_Click(object sender, RoutedEventArgs e)
+        => Process.Start(new ProcessStartInfo("https://github.com/Jensen-Yao/dsh-plus-plus/releases") { UseShellExecute = true });
 
-    void BtnFreebuffRefresh_Click(object sender, RoutedEventArgs e)
-        => RefreshFreebuffStatus(true);
+    void RefreshBackups()
+    {
+        var selected = (HistoryList.SelectedItem as MaintenanceRecord)?.Id;
+        BackupList.ItemsSource = upd.Backups();
+        BackupList.SelectedIndex = BackupList.Items.Count > 0 ? 0 : -1;
+        var history = upd.History();
+        HistoryList.ItemsSource = history;
+        HistoryList.SelectedItem = history.FirstOrDefault(record => record.Id == selected) ?? history.FirstOrDefault();
+        var pending = history.Count(record => record.NeedsRecovery);
+        HistoryHint.Text = pending > 0 ? $"{pending} 个任务待恢复，未自动执行联网修复。" : history.Count == 0 ? "暂无维护记录" : $"{history.Count} 次维护 · 最近记录在前";
+        if (pending > 0)
+        {
+            FailurePanel.Visibility = Visibility.Visible;
+            FailureText.Text = "发现中断的依赖维护，请在「版本与备份」中恢复；启动服务仍然可用。";
+        }
+    }
 
+    void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var record = HistoryList.SelectedItem as MaintenanceRecord;
+        HistoryDetail.Text = record == null ? "" : CommandRunner.Redact(record.Detail);
+        BtnRecoverMaintenance.IsEnabled = !busy && record?.NeedsRecovery == true;
+    }
+
+    async void BtnRecoverMaintenance_Click(object sender, RoutedEventArgs e)
+    {
+        if (HistoryList.SelectedItem is not MaintenanceRecord record || !record.NeedsRecovery) return;
+        if (!ConfirmMaintenance("恢复中断的依赖维护", record.Backups.Select(backup => new PlannedChange(backup.Directory, backup.Display)))) return;
+        await RunTaskAsync("恢复中断任务", async cancellation =>
+            await Task.Run(() => upd.RecoverMaintenanceAsync(record, Progress, cancellation)));
+    }
+
+    void BtnExportPlugins_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { FileName = $"dsh-plugins-{DateTime.Now:yyyyMMdd-HHmm}.json", Filter = "JSON 文件|*.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        var inventory = PluginGrid.Items.Cast<PluginItem>().Select(plugin => new
+        { plugin.Profile, plugin.Name, plugin.OwnerName, plugin.Installed, plugin.Spec, plugin.ResolvedSource, plugin.Latest, plugin.Status, plugin.CheckedAt, plugin.CheckError });
+        try
+        {
+            File.WriteAllText(dialog.FileName, CommandRunner.Redact(JsonSerializer.Serialize(inventory, new JsonSerializerOptions { WriteIndented = true })));
+            PluginHintText.Text = "插件清单已导出。";
+        }
+        catch (IOException error) { PluginHintText.Text = "导出失败：" + error.Message; }
+    }
+    void BtnBackup_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy) return;
+        var profile = ProfileFilter.SelectedItem as string;
+        if (string.IsNullOrEmpty(profile) || profile == "全部 Profile") profile = "web";
+        var directory = Path.Combine(svc.HomeBase, "profiles", profile);
+        try { upd.CreateBackup(directory, "手动备份 · " + profile); RefreshBackups(); }
+        catch (Exception exception) { Log(exception.Message); }
+    }
+    async void BtnRestore_Click(object sender, RoutedEventArgs e)
+    {
+        if (BackupList.SelectedItem is not MaintenanceBackup backup) return;
+        if (MessageBox.Show(this, "恢复 " + backup.Display + "？当前依赖将先保存为新的恢复点。",
+            "恢复备份", MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
+        await RunTaskAsync("恢复备份", async cancellation =>
+            await Task.Run(() => upd.RestoreBackupAsync(backup, Progress, cancellation)));
+    }
+
+    async Task RefreshAsync()
+    {
+        if (refreshing || !ready) return;
+        refreshing = true;
+        try
+        {
+            var state = await Task.Run(() =>
+            {
+                var bind = svc.GetBindAddress(cfg.Port);
+                var host = svc.DisplayHost();
+                var tailscale = DateTime.UtcNow - lastRemoteRefresh > TimeSpan.FromSeconds(20) ? svc.GetTsState() : null;
+                return (bind, host, tailscale, phase: svc.RuntimePhase());
+            });
+            running = state.bind != null;
+            activeBind = state.bind;
+            var label = svc.IsStarting ? "启动中" : state.phase == "restarting" ? "重启接续中" : running ? "运行中" : string.IsNullOrEmpty(svc.LastFailure) ? "已停止" : "启动失败";
+            SidebarStatus.Text = label;
+            SvcStateText.Text = label;
+            SidebarDot.Fill = SvcDot.Fill = BrushFor(svc.IsStarting ? "WarningBrush" : running ? "SuccessBrush" : "TextTertiaryBrush");
+            if (!busy) SetControlsEnabled(true);
+            BtnOpenUi.IsEnabled = running;
+            PcUrlText.Text = running ? svc.LocalUrl() : "服务尚未启动";
+            BindText.Text = running ? $"绑定 {state.bind}:{cfg.Port} · PID {svc.GetPidOnPort(cfg.Port)}"
+                : cfg.Mode == "local" ? "下次启动：127.0.0.1" : "下次启动：按所选连接方式绑定具体网卡";
+            CkSvcText.Text = running ? "DSH 服务已启动" : "DSH 服务未运行";
+            HeroUrlText.Text = cfg.Mode == "local" ? "仅本机访问" : $"http://{state.host}:{cfg.Port}";
+            HeroUrlText.Tag = cfg.Mode == "local" ? null : HeroUrlText.Text;
+            BtnCopyPhone.IsEnabled = cfg.Mode != "local";
+            PhoneHintText.Text = cfg.Mode == "local" ? "在启动设置中关闭「仅本机访问」后可使用远程连接。"
+                : cfg.AccessMode == "tailscale" ? "手机与电脑连接同一个 Tailscale 网络。" : "此地址使用所选网络连接。";
+            if (state.tailscale != null)
+            {
+                CkTsText.Text = state.tailscale.CkText;
+                TsDetailText.Text = state.tailscale.Detail;
+                BtnTsFix.Content = state.tailscale.FixLabel;
+                BtnTsFix.Tag = state.tailscale.FixAction;
+                lastRemoteRefresh = DateTime.UtcNow;
+            }
+        }
+        catch (Exception exception) { BindText.Text = exception.Message; }
+        finally { refreshing = false; }
+    }
+
+    async void BtnTsFix_Click(object sender, RoutedEventArgs e)
+    {
+        var action = BtnTsFix.Tag as string;
+        BtnTsFix.IsEnabled = false;
+        await Task.Run(() =>
+        {
+            if (action == "install") svc.TsInstall();
+            else if (action == "down") svc.TsDown();
+            else svc.StartTsAsync(action == "login" ? "login" : "up");
+        });
+        BtnTsFix.IsEnabled = true;
+        lastRemoteRefresh = DateTime.MinValue;
+        await RefreshAsync();
+    }
+    void BtnFwAdd_Click(object sender, RoutedEventArgs e)
+    {
+        svc.AddFirewallRule();
+        CkFwText.Text = "已请求防火墙放行；状态以 Windows 防火墙为准。";
+    }
+    void PcUrlText_Click(object sender, MouseButtonEventArgs e) { if (running) Copy(svc.LocalUrl()); }
+    void HeroUrlText_Click(object sender, MouseButtonEventArgs e) { if (HeroUrlText.Tag is string url) Copy(url); }
+    void BtnCopyPhone_Click(object sender, RoutedEventArgs e) { if (HeroUrlText.Tag is string url) Copy(url, BtnCopyPhone); }
+
+    async Task RefreshFreebuffAsync()
+    {
+        if (freebuff.IsOperationInProgress) return;
+        var status = await Task.Run(() => freebuff.GetStatus());
+        ApplyFreebuff(status);
+    }
+    void ApplyFreebuff(FreebuffStatus status)
+    {
+        FreebuffStateText.Text = status.State == FreebuffState.Running ? "运行中" : status.State == FreebuffState.Starting ? "启动中" : "已停止";
+        FreebuffStatusText.Text = status.Message;
+        BtnFreebuffStart.IsEnabled = !freebuff.IsOperationInProgress && status.State != FreebuffState.Running;
+        BtnFreebuffStop.IsEnabled = !freebuff.IsOperationInProgress && status.State == FreebuffState.Running;
+    }
+    async Task RunFreebuffAsync(Func<FreebuffStatus> action)
+    {
+        if (freebuff.IsOperationInProgress) return;
+        BtnFreebuffStart.IsEnabled = BtnFreebuffStop.IsEnabled = false;
+        ApplyFreebuff(await Task.Run(action));
+    }
+    async void BtnFreebuffStart_Click(object sender, RoutedEventArgs e) => await RunFreebuffAsync(() => freebuff.Start());
+    async void BtnFreebuffStop_Click(object sender, RoutedEventArgs e) => await RunFreebuffAsync(() => freebuff.Stop());
+    async void BtnFreebuffRefresh_Click(object sender, RoutedEventArgs e) => await RefreshFreebuffAsync();
     void BtnFreebuffReveal_Click(object sender, RoutedEventArgs e)
     {
         freebuffReveal = !freebuffReveal;
-        ApplyFreebuffConnectionInfo();
+        FreebuffConnectionText.Text = freebuffReveal ? $"Base URL: {freebuff.ConfiguredBaseUrl}\nAPI Key: {freebuff.ConfiguredApiKey}"
+            : "Base URL: ********\nAPI Key: ********";
+        BtnFreebuffReveal.Content = freebuffReveal ? "隐藏" : "显示";
     }
-
-    void BtnFreebuffCopy_Click(object sender, RoutedEventArgs e)
-    {
-        CopyText($"Base URL: {freebuff.ConfiguredBaseUrl}{Environment.NewLine}API Key: {freebuff.ConfiguredApiKey}", BtnFreebuffCopy);
-    }
-
-    void RunFreebuffOperation(Func<FreebuffStatus> operation)
-    {
-        if (freebuff.IsOperationInProgress) return;
-        BtnFreebuffStart.IsEnabled = false;
-        BtnFreebuffStop.IsEnabled = false;
-        BtnFreebuffRefresh.IsEnabled = false;
-        FreebuffStateText.Text = "◌ 正在处理...";
-        Task.Run(operation).ContinueWith(t =>
-        {
-            var status = t.IsFaulted
-                ? new FreebuffStatus { State = FreebuffState.Error, Message = t.Exception?.GetBaseException().Message ?? "操作失败" }
-                : t.Result;
-            Dispatcher.BeginInvoke(new Action(() => ApplyFreebuffStatus(status)));
-        }, TaskScheduler.Default);
-    }
-
-    void RefreshFreebuffStatus(bool immediate = false)
-    {
-        if (!immediate && NavList.SelectedIndex != 1 && freebuffProbe != 0) return;
-        if (Interlocked.Exchange(ref freebuffProbe, 1) != 0) return;
-        Task.Run(() => freebuff.GetStatus()).ContinueWith(t =>
-        {
-            var status = t.IsFaulted
-                ? new FreebuffStatus { State = FreebuffState.Error, Message = t.Exception?.GetBaseException().Message ?? "状态检查失败" }
-                : t.Result;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                Interlocked.Exchange(ref freebuffProbe, 0);
-                ApplyFreebuffStatus(status);
-            }));
-        }, TaskScheduler.Default);
-    }
-
-    void ApplyFreebuffStatus(FreebuffStatus status)
-    {
-        Interlocked.Exchange(ref freebuffProbe, 0);
-        var color = status.State == FreebuffState.Running ? "SuccessBrush" :
-            status.State is FreebuffState.Starting ? "WarningBrush" : "TextTertiaryBrush";
-        FreebuffDot.Fill = B(color);
-        FreebuffStateText.Text = status.State switch
-        {
-            FreebuffState.Running => "● 正在运行",
-            FreebuffState.Starting => "◌ 正在启动",
-            FreebuffState.DockerUnavailable => "○ Docker 未就绪",
-            FreebuffState.Error => "○ 启动失败",
-            _ => "○ 未启动",
-        };
-        FreebuffStateText.Foreground = B(color);
-        FreebuffStatusText.Text = status.Message;
-        BtnFreebuffStart.IsEnabled = status.State != FreebuffState.Running && !freebuff.IsOperationInProgress;
-        BtnFreebuffStop.IsEnabled = status.State == FreebuffState.Running && !freebuff.IsOperationInProgress;
-        BtnFreebuffRefresh.IsEnabled = !freebuff.IsOperationInProgress;
-        ApplyFreebuffConnectionInfo();
-    }
-
-    void ApplyFreebuffConnectionInfo()
-    {
-        if (freebuffReveal)
-        {
-            FreebuffConnectionText.Text = $"Base URL: {freebuff.ConfiguredBaseUrl}{Environment.NewLine}API Key:  {freebuff.ConfiguredApiKey}";
-            BtnFreebuffReveal.Content = "隐藏 Base 和 Key";
-        }
-        else
-        {
-            FreebuffConnectionText.Text = "Base URL: ********\nAPI Key:  ********";
-            BtnFreebuffReveal.Content = "显示 Base 和 Key";
-        }
-    }
-
-    void BtnTsFix_Click(object sender, RoutedEventArgs e) => tsAction();
-
-    void BtnCopyPhone_Click(object sender, RoutedEventArgs e) { if (HeroUrlText.Tag is string s) CopyText(s, BtnCopyPhone); }
-    void PcUrlText_Click(object sender, MouseButtonEventArgs e) { if (PcUrlText.Tag is string s) CopyText(s); }
-    void HeroUrlText_Click(object sender, MouseButtonEventArgs e) { if (HeroUrlText.Tag is string s) CopyText(s); }
-    void BtnCopyTunnel_Click(object sender, RoutedEventArgs e) { if (TunnelText.Tag is string s) CopyText(s, BtnCopyTunnel); }
-
-    void CopyText(string s)
-    {
-        try { Clipboard.SetText(s); Log("已复制: " + s); }
-        catch { }
-    }
-
-    /// <summary>复制并让来源按钮闪现「✓ 已复制」反馈（1.2 秒后还原）。</summary>
-    void CopyText(string s, Button from)
-    {
-        CopyText(s);
-        if (from == null) return;
-        if (from.Content is not string original || string.IsNullOrEmpty(original)) return;
-        from.Content = "✓ 已复制";
-        from.IsEnabled = false;
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.2) };
-        timer.Tick += (_1, _2) =>
-        {
-            timer.Stop();
-            from.Content = original;
-            from.IsEnabled = true;
-        };
-        timer.Start();
-    }
-
-    void BtnHelp_Click(object sender, RoutedEventArgs e) => new HelpWindow { Owner = this }.ShowDialog();
-    void LinkSessions_Click(object sender, RoutedEventArgs e) => svc.OpenDir(Path.Combine(svc.HomeBase, "sessions"));
-    void LinkConfigDir_Click(object sender, RoutedEventArgs e) => svc.OpenDir(svc.HomeBase);
-
-    // ---------------------------------------------------------------- 存储位置
+    void BtnFreebuffCopy_Click(object sender, RoutedEventArgs e) => Copy($"Base URL: {freebuff.ConfiguredBaseUrl}\nAPI Key: {freebuff.ConfiguredApiKey}", BtnFreebuffCopy);
 
     void BuildStorageRows()
     {
-        if (StoragePanel == null) return;
         StoragePanel.Children.Clear();
-        foreach (var r in svc.StorageRows())
-            StoragePanel.Children.Add(BuildStorageRow(r));
-    }
-
-    FrameworkElement BuildStorageRow(StorageRowInfo r)
-    {
-        var exists = !string.IsNullOrEmpty(r.Path) && (r.IsFile ? File.Exists(r.Path) : Directory.Exists(r.Path));
-        var root = new StackPanel { Margin = new Thickness(0, 2, 0, 12) };
-
-        var head = new StackPanel { Orientation = Orientation.Horizontal };
-        head.Children.Add(new Ellipse
+        var installation = new StorageRowInfo { Name = "DSH 安装目录", Path = cfg.DshAppDir, Kind = "installation", CanEdit = true };
+        foreach (var row in new[] { installation }.Concat(svc.StorageRows()))
         {
-            Width = 8,
-            Height = 8,
-            Fill = B(exists ? "SuccessBrush" : "TextTertiaryBrush"),
-            Margin = new Thickness(0, 0, 7, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        head.Children.Add(new TextBlock
-        {
-            Text = r.Name,
-            FontSize = 14,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = B("TextPrimaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        if (!string.IsNullOrEmpty(r.Tag))
-        {
-            var blue = r.Tag.Contains("MCP");
-            var chip = new Border
+            var container = new Grid { Margin = new Thickness(0, 0, 0, 18) };
+            container.ColumnDefinitions.Add(new ColumnDefinition());
+            container.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var text = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
+            text.Children.Add(new TextBlock { Text = row.Name, Style = (Style)FindResource("TbBody"), FontWeight = FontWeights.SemiBold });
+            text.Children.Add(new TextBlock { Text = row.Path.Length == 0 ? row.Desc : row.Path, Style = (Style)FindResource("TbHint"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) });
+            container.Children.Add(text);
+            if (!row.Informational)
             {
-                Background = B(blue ? "ChipBlueBgBrush" : "ChipGreenBgBrush"),
-                CornerRadius = new CornerRadius(999),
-                Padding = new Thickness(8, 1, 8, 2),
-                Margin = new Thickness(8, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            chip.Child = new TextBlock
-            {
-                Text = r.Tag,
-                FontSize = 11,
-                Foreground = B(blue ? "ChipBlueTextBrush" : "ChipGreenTextBrush"),
-            };
-            head.Children.Add(chip);
-        }
-        root.Children.Add(head);
-
-        if (!string.IsNullOrEmpty(r.Path))
-            root.Children.Add(new TextBlock
-            {
-                Text = r.Path,
-                FontSize = 12,
-                Foreground = B("TextTertiaryBrush"),
-                Margin = new Thickness(15, 2, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-            });
-        if (!string.IsNullOrEmpty(r.Desc))
-            root.Children.Add(new TextBlock
-            {
-                Text = r.Desc,
-                FontSize = 12,
-                Foreground = B("TextSecondaryBrush"),
-                Margin = new Thickness(15, 1, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-            });
-        if (!string.IsNullOrEmpty(r.Sub))
-            root.Children.Add(new TextBlock
-            {
-                Text = "技能查找范围：此目录下的 skills 子目录",
-                FontSize = 12,
-                Foreground = B("TextSecondaryBrush"),
-                Margin = new Thickness(15, 1, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-            });
-
-        if (!r.Informational)
-        {
-            var btns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(15, 6, 0, 0) };
-            btns.Children.Add(MakeBtn(r.IsFile ? "打开所在目录" : "打开目录",
-                () => svc.OpenDir(r.IsFile ? Path.GetDirectoryName(r.Path) : r.Path)));
-            btns.Children.Add(MakeBtn("复制路径", () =>
-            {
-                try { Clipboard.SetText(r.Path); Log("已复制: " + r.Path); } catch { }
-            }));
-            if (r.CanEdit)
-                btns.Children.Add(MakeBtn("修改…", () => { if (r.Kind == "dsh") EditDshHome(); else EditAgentsHome(); }, primary: true));
-            root.Children.Add(btns);
-        }
-        return root;
-    }
-
-    Button MakeBtn(string text, Action onClick, bool primary = false)
-    {
-        var b = new Button
-        {
-            Content = text,
-            Style = (Style)FindResource(primary ? "BtnPrimary" : "BtnSecondary"),
-            Height = 28,
-            Padding = new Thickness(12, 0, 12, 0),
-            Margin = new Thickness(0, 0, 8, 0),
-        };
-        b.Click += (s, e) => onClick();
-        return b;
-    }
-
-    void EditDshHome()
-    {
-        var dlg = new InputDialog("修改 DSH 主目录",
-            "输入新的 DSH 主目录（支持 ~ 开头；留空 = 默认 ~/.dsh）：\n改完后需要「停止→启动」服务才生效；把旧目录内容复制过去即可迁移。",
-            cfg.DshHome) { Owner = this };
-        if (dlg.ShowDialog() == true)
-        {
-            cfg.DshHome = dlg.Value;
-            cfg.Save();
-            Log("DSH 主目录已改为: " + (cfg.DshHome == "" ? "默认 ~/.dsh" : cfg.DshHome));
-            BuildStorageRows();
-        }
-    }
-
-    void EditAgentsHome()
-    {
-        var dlg = new InputDialog("修改 Agents 技能目录",
-            "输入新的 Agents 目录（支持 ~ 开头；留空 = 默认 ~/.agents）：\n改完后需要「停止→启动」服务才生效。",
-            cfg.AgentsHome) { Owner = this };
-        if (dlg.ShowDialog() == true)
-        {
-            cfg.AgentsHome = dlg.Value;
-            cfg.Save();
-            Log("Agents 目录已改为: " + (cfg.AgentsHome == "" ? "默认 ~/.agents" : cfg.AgentsHome));
-            BuildStorageRows();
-        }
-    }
-
-    // ---------------------------------------------------------------- 刷新
-
-    void RefreshAll()
-    {
-        try
-        {
-            var running = svc.IsDshRunning();
-            SvcDot.Fill = B(running ? "SuccessBrush" : "TextTertiaryBrush");
-            SvcStateText.Text = running ? "● 服务运行中" : "○ 服务未启动";
-            BtnStart.IsEnabled = !running;
-            BtnStop.IsEnabled = running;
-            BtnOpenUi.IsEnabled = running;
-            PcUrlText.Text = running
-                ? $"电脑自己打开用：{svc.LocalUrl()}（只有这台电脑能用；手机用下面的地址）"
-                : $"电脑打开用：{svc.LocalUrl()}（先点「▶ 启动服务」）";
-            PcUrlText.Tag = svc.LocalUrl();
-
-            if (running)
-            {
-                var bind = svc.GetBindAddress(cfg.Port);
-                var open = bind == "0.0.0.0";
-                var desc = open
-                    ? "所有网络都能连进来（局域网 / Tailscale / 隧道）——手机入口已开放"
-                    : "只有这台电脑能用——手机连不进来";
-                var mismatch = (cfg.Mode == "local") == open;
-                BindText.Foreground = B(open ? "WarningBrush" : "TextSecondaryBrush");
-                BindText.Text = $"对外绑定：{bind ?? "?"}　{desc}" + (mismatch ? "　（与①的勾选不一致，重启服务后生效）" : "");
+                var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+                Grid.SetColumn(actions, 1);
+                var open = new Button { Content = "打开", Style = (Style)FindResource("BtnGhost") };
+                open.Click += (_, _) => svc.OpenDir(row.IsFile ? Path.GetDirectoryName(row.Path) : row.Path);
+                actions.Children.Add(open);
+                if (row.CanEdit)
+                {
+                    var edit = new Button { Content = "修改", Style = (Style)FindResource("BtnGhost"), Margin = new Thickness(8, 0, 0, 0) };
+                    edit.Click += (_, _) => EditPath(row);
+                    actions.Children.Add(edit);
+                }
+                container.Children.Add(actions);
             }
-            else
-            {
-                BindText.Foreground = B("TextSecondaryBrush");
-                BindText.Text = cfg.Mode == "local"
-                    ? "对外绑定（未运行）：启动后只绑 127.0.0.1 —— 手机连不进来"
-                    : "对外绑定（未运行）：启动后绑 0.0.0.0 全网卡 —— 手机可连";
-            }
-
-            CkSvcText.Text = running ? "✓ 服务已启动（对外已开放）" : "✗ 服务没启动——手机连不上，点上方「▶ 启动服务」";
-            CkSvcText.Foreground = B(running ? "SuccessBrush" : "WarningBrush");
-
-            CkFwText.Text = fwDone
-                ? "✓ 防火墙已放行（如手机仍打不开，多半是路由器问题，改用 Tailscale）"
-                : "？ 防火墙未确认——手机打不开时点右边「一键放行」（弹 UAC 点「是」）";
-            CkFwText.Foreground = B(fwDone ? "SuccessBrush" : "TextTertiaryBrush");
+            StoragePanel.Children.Add(container);
         }
-        catch { }
-        try { RefreshTs(); } catch { }
-        try { RefreshTunnel(); } catch { }
-        try { RefreshFreebuffStatus(); } catch { }
+    }
+    void EditPath(StorageRowInfo row)
+    {
+        if (running || busy) { Log("请先停止服务再修改目录。"); return; }
+        var dialog = new InputDialog("修改 " + row.Name, "请输入目录绝对路径。", row.Path) { Owner = this };
+        if (dialog.ShowDialog() != true || !Path.IsPathFullyQualified(dialog.Value)) return;
+        if (row.Kind == "installation") cfg.DshAppDir = dialog.Value;
+        else if (row.Kind == "dsh") cfg.DshHome = dialog.Value;
+        else cfg.AgentsHome = dialog.Value;
+        cfg.Save();
+        BuildStorageRows();
+        ReloadPlugins();
+        RefreshVersions();
     }
 
-    void RefreshTs()
+    async void BtnDiagnose_Click(object sender, RoutedEventArgs e)
     {
-        var u = svc.GetTsState();
-        CkTsText.Text = u.CkText;
-        CkTsText.Foreground = ToneBrush(u.Tone);
-        TsDetailText.Text = u.Detail;
-        BtnTsFix.Content = u.FixLabel;
-        tsAction = u.FixAction switch
-        {
-            "install" => () => svc.TsInstall(),
-            "login" => () => svc.StartTsAsync("login"),
-            "up" => () => svc.StartTsAsync("up"),
-            "down" => () => svc.TsDown(),
-            _ => () => { },
-        };
+        BtnDiagnose.IsEnabled = false;
+        try { AppendLog(await Task.Run(() => Diagnostics.ReportAsync(cfg, svc, upd))); }
+        catch (Exception exception) { Log(exception.Message); }
+        finally { BtnDiagnose.IsEnabled = true; }
     }
-
-    void RefreshTunnel()
+    void BtnCopyLogs_Click(object sender, RoutedEventArgs e) => Copy(CommandRunner.Redact(LogBox.Text));
+    void BtnExportLogs_Click(object sender, RoutedEventArgs e)
     {
-        if (TglAutoTunnel.IsChecked != true)
-        {
-            TunnelText.Text = "";
-            TunnelText.Tag = null;
-            BtnCopyTunnel.IsEnabled = false;
-            return;
-        }
-        if (!svc.IsDshRunning())
-        {
-            TunnelText.Text = "启动服务后自动生成临时随机域名（仅用于手机临时扫码）";
-            TunnelText.Tag = null;
-            BtnCopyTunnel.IsEnabled = false;
-            return;
-        }
-        if ((DateTime.Now - lastTunnelQuery).TotalSeconds < 10) return;
-        lastTunnelQuery = DateTime.Now;
-        Task.Run(() =>
-        {
-            try
-            {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-                var json = client.GetStringAsync($"http://127.0.0.1:{cfg.Port}/api/pair/status").GetAwaiter().GetResult();
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("publicUrl", out var pu) && pu.GetString() is string url && url.Length > 0)
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        TunnelText.Text = $"当前临时随机域名：{url}（每次启动会变）";
-                        TunnelText.Tag = url;
-                        BtnCopyTunnel.IsEnabled = true;
-                    }));
-            }
-            catch { }
-        });
+        var dialog = new SaveFileDialog { FileName = $"dsh-diagnostics-{DateTime.Now:yyyyMMdd-HHmm}.txt", Filter = "文本文件|*.txt" };
+        if (dialog.ShowDialog(this) == true) File.WriteAllText(dialog.FileName, CommandRunner.Redact(LogBox.Text), Encoding.UTF8);
     }
-
-    // ---------------------------------------------------------------- 日志
-
-    public void Log(string message)
+    void Copy(string text, Button source = null)
     {
-        Dispatcher.BeginInvoke(new Action(() =>
+        try { Clipboard.SetText(text); }
+        catch (System.Runtime.InteropServices.COMException) { Log("剪贴板被占用，请重试。"); return; }
+        if (source == null) return;
+        var original = source.Content;
+        source.Content = "已复制";
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.2) };
+        timer.Tick += (_, _) => { timer.Stop(); source.Content = original; };
+        timer.Start();
+    }
+    void BtnHelp_Click(object sender, RoutedEventArgs e) => new HelpWindow { Owner = this }.ShowDialog();
+    public void Log(string text) => AppendLog($"[{DateTime.Now:HH:mm:ss}] {text}\n");
+    void AppendLog(string text)
+    {
+        if (Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(() =>
         {
             if (LogBox == null) return;
-            EnsureLogReady();
-            LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
-            TrimLog();
-        }));
+            if (LogBox.Text == "暂无日志") LogBox.Clear();
+            LogBox.AppendText(CommandRunner.Redact(text));
+            if (LogBox.Text.Length > 100000) LogBox.Text = LogBox.Text[^80000..];
+            if (FollowLog.IsChecked == true) LogBox.ScrollToEnd();
+            OverviewLog.Text = string.Join("\n", LogBox.Text.Split('\n').TakeLast(16));
+            OverviewLog.ScrollToEnd();
+        });
     }
-
-    void AppendLogLines(string text)
-    {
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (LogBox == null) return;
-            EnsureLogReady();
-            LogBox.AppendText(text);
-            TrimLog();
-        }));
-    }
-
-    void EnsureLogReady()
-    {
-        if (LogBox.Text.StartsWith("（尚无日志")) LogBox.Clear();
-    }
-
-    void TrimLog()
-    {
-        if (LogBox.LineCount > 600)
-        {
-            var lines = LogBox.Text.Split('\n').ToList();
-            if (lines.Count > 600)
-                LogBox.Text = string.Join("\n", lines.Skip(lines.Count - 400));
-        }
-        LogBox.ScrollToEnd();
-    }
-
-    // ---------------------------------------------------------------- 退出
 
     void OnClosing(object sender, CancelEventArgs e)
     {
-        if (svc.IsDshRunning())
+        if (busy) { e.Cancel = true; closingAfterTask = true; taskCancellation?.Cancel(); return; }
+        if (pluginCheckTask is { IsCompleted: false } || !versionChecks.IsCompleted)
         {
-            var r = MessageBox.Show(this,
-                "dsh web 正在运行。\n\n点击「是」保持它继续在后台运行（本应用关闭不影响服务）；\n点击「否」先停止服务再退出。",
-                "退出确认", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (r == MessageBoxResult.No) svc.StopDsh();
-            else if (r == MessageBoxResult.Cancel) { e.Cancel = true; return; } // 取消退出：服务保持原样，不 Dispose
+            e.Cancel = true;
+            if (!joiningReadChecks) { joiningReadChecks = true; _ = JoinReadChecksAndCloseAsync(); }
+            return;
         }
-        SaveWindowState();
-        cfg.Save();
-        svc.Dispose(); // 只有真正退出时才释放（此前在弹窗前就 Dispose，点「取消」会弄坏日志尾随）
+        if (App.RenderDirectory == null && !selfUpdating && running)
+        {
+            var answer = MessageBox.Show(this, "DSH 服务正在运行。是否保留后台服务？\n「否」将停止服务后退出。",
+                "退出控制台", MessageBoxButton.YesNoCancel);
+            if (answer == MessageBoxResult.Cancel)
+            {
+                e.Cancel = true;
+                joiningReadChecks = closingAfterTask = false;
+                if (readCancellation.IsCancellationRequested) { readCancellation.Dispose(); readCancellation = new(); }
+                return;
+            }
+            if (answer == MessageBoxResult.No) svc.StopDsh();
+        }
+        refreshTimer.Stop();
+        if (App.RenderDirectory == null)
+        {
+            cfg.WinMaximized = WindowState == WindowState.Maximized;
+            var bounds = RestoreBounds;
+            cfg.WinLeft = bounds.Left; cfg.WinTop = bounds.Top;
+            cfg.WinWidth = bounds.Width; cfg.WinHeight = bounds.Height;
+            cfg.Save();
+        }
+        svc.Dispose();
+        readCancellation.Dispose();
+    }
+
+    async Task JoinReadChecksAndCloseAsync()
+    {
+        readCancellation.Cancel();
+        await Task.WhenAll(StopPluginCheckAsync(), versionChecks);
+        Close();
     }
 }

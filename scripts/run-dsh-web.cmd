@@ -5,7 +5,7 @@ cd /d "%~dp0"
 
 rem ------------------------------------------------------------------
 rem  dsh web launcher
-rem    LAN mode (default): bind all interfaces via lan.patch.yml so any
+rem    LAN mode (default): bind one concrete local interface so any
 rem    device on the same network can open the same session and watch
 rem    it live - messages, tool output and the thinking stream.
 rem
@@ -76,7 +76,7 @@ if not "%DSH_NO_FIREWALL%"=="1" (
 echo.
 echo ============================================================
 echo   dsh web (LAN mode)
-echo     local : http://127.0.0.1:%PORT%
+echo     local : http://%HOST%:%PORT%
 echo     LAN   : http://%HOST%:%PORT%
 echo   Open the LAN address on any device in the same network and
 echo   pick the same session. Messages, tool output and the live
@@ -84,7 +84,7 @@ echo   thinking stream stay in sync on every screen.
 echo ============================================================
 echo.
 
-npx --no-install @deepseek-ai/dsh web --patch "%~dp0lan.patch.yml" --port %PORT%
+call npx --no-install @deepseek-ai/dsh --profile web --host "%HOST%" --port %PORT%
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
   echo.
@@ -103,7 +103,7 @@ if not errorlevel 1 (
   exit /b 1
 )
 echo [dsh] Serving loopback only: http://127.0.0.1:%PORT%
-npx --no-install @deepseek-ai/dsh web --port %PORT%
+call npx --no-install @deepseek-ai/dsh --profile web --host 127.0.0.1 --port %PORT%
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
   echo.

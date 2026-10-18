@@ -15,7 +15,7 @@ public static class FrontendPatch
 
     public static string PolyfillSource()
     {
-        var p = Path.Combine(AppContext.BaseDirectory, "compat-polyfill.js");
+        var p = BundledAssets.Get("compat-polyfill.js");
         if (!File.Exists(p)) return null;
         return File.ReadAllText(p, Encoding.UTF8);
     }
