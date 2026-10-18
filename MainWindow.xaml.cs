@@ -41,16 +41,19 @@ public partial class MainWindow : Window
         cfg = App.Cfg;
         svc = new DshService(cfg, Log);
         InitializeComponent();
-        freebuff = new FreebuffService(@"F:\freebuffapi", Log);
+        freebuff = new FreebuffService(cfg.FreebuffDir, Log, cfg.FreebuffDocker);
         upd = new UpdateService(cfg, svc, Log);
+        RestoreWindow();
         SetThemeIcon();
+        VersionText.Text = "v" + UpdateService.AppVersion() + " · 设置里的「检查更新」可升级";
+        FreebuffPathsText.Text = $"项目目录：{cfg.FreebuffDir}\nDocker Desktop：{cfg.FreebuffDocker}";
         BuildStorageRows();
         LoadConfigToUi();
         FrontendPatch.Ensure(cfg, Log);
         svc.StartLogTail(AppendLogLines);
         RefreshAll();
         ready = true;
-        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : 0;
+        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 6);
         // 更新中心：先显示本地信息，再后台自动检查（dsh++ 新版本 / 插件自动更新）
         Dispatcher.BeginInvoke(new Action(InitUpdateCenter), DispatcherPriority.Background);
         if (App.UiCheck)
@@ -87,14 +90,70 @@ public partial class MainWindow : Window
         ThemeIcon.Data = (Geometry)FindResource(geom);
     }
 
+    /// <summary>
+    /// 主题热切换：替换 Application 资源字典里的主题层（index 0），
+    /// 所有画刷都是 DynamicResource，界面即时换肤，不再需要重启应用。
+    /// </summary>
+    void ApplyTheme()
+    {
+        var theme = string.Equals(cfg.Theme, "light", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark";
+        var dicts = Application.Current.Resources.MergedDictionaries;
+        var source = new Uri($"Themes/{theme}.xaml", UriKind.Relative);
+        if (dicts.Count > 0)
+            dicts[0] = new ResourceDictionary { Source = source };
+        else
+            dicts.Insert(0, new ResourceDictionary { Source = source });
+        SetThemeIcon();
+    }
+
     void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
         cfg.Theme = cfg.Theme == "dark" ? "light" : "dark";
         cfg.Save();
-        var exe = Environment.ProcessPath;
-        try { if (!string.IsNullOrEmpty(exe)) Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true }); }
-        catch { }
-        Application.Current.Shutdown();
+        ApplyTheme();
+    }
+
+    // ---------------------------------------------------------------- 窗口状态记忆
+
+    /// <summary>恢复上次的位置/尺寸/最大化状态；坐标不在虚拟桌面内时回退居中。</summary>
+    void RestoreWindow()
+    {
+        if (cfg.WinMaximized)
+        {
+            WindowState = WindowState.Maximized;
+            return;
+        }
+        if (double.IsNaN(cfg.WinLeft) || double.IsNaN(cfg.WinTop)) return; // 首次启动：保持 CenterScreen
+        var w = double.IsNaN(cfg.WinWidth) ? Width : cfg.WinWidth;
+        var h = double.IsNaN(cfg.WinHeight) ? Height : cfg.WinHeight;
+        w = Math.Max(MinWidth, w); h = Math.Max(MinHeight, h);
+        // 窗口左上角必须落在虚拟桌面（所有显示器的并集）内，防止拔显示器后窗口跑到屏幕外
+        var vl = SystemParameters.VirtualScreenLeft;
+        var vt = SystemParameters.VirtualScreenTop;
+        var vr = vl + SystemParameters.VirtualScreenWidth;
+        var vb = vt + SystemParameters.VirtualScreenHeight;
+        if (cfg.WinLeft < vl - 40 || cfg.WinLeft > vr - 80 || cfg.WinTop < vt - 40 || cfg.WinTop > vb - 80)
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            return;
+        }
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = cfg.WinLeft; Top = cfg.WinTop; Width = w; Height = h;
+    }
+
+    void SaveWindowState()
+    {
+        if (WindowState == WindowState.Minimized) return; // 最小化时不记坐标
+        if (WindowState == WindowState.Maximized)
+        {
+            cfg.WinMaximized = true;
+        }
+        else
+        {
+            cfg.WinMaximized = false;
+            cfg.WinLeft = Left; cfg.WinTop = Top;
+            cfg.WinWidth = Width; cfg.WinHeight = Height;
+        }
     }
 
     // ---------------------------------------------------------------- 页面切换
@@ -111,6 +170,11 @@ public partial class MainWindow : Window
         PageUpdates.Visibility = idx == 5 ? Visibility.Visible : Visibility.Collapsed;
         PageLog.Visibility = idx == 6 ? Visibility.Visible : Visibility.Collapsed;
         if (idx == 5) RefreshUpdateStats();
+        if (ready && cfg.LastPage != idx)
+        {
+            cfg.LastPage = idx;
+            cfg.Save();
+        }
     }
 
     // ---------------------------------------------------------------- 配置
@@ -171,7 +235,18 @@ public partial class MainWindow : Window
     void HostBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!ready) return;
-        cfg.DisplayHost = HostBox.Text.Trim();
+        var host = HostBox.Text.Trim();
+        // 常见粘贴错误自动清洗：http(s):// 前缀、结尾斜杠、空白
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(host, @"^https?://", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase).TrimEnd('/');
+        if (cleaned != host)
+        {
+            var caret = HostBox.CaretIndex - (host.Length - cleaned.Length);
+            HostBox.Text = cleaned;
+            HostBox.CaretIndex = Math.Max(0, caret);
+            return; // Text 改写会再次触发本事件，由那一次落盘
+        }
+        cfg.DisplayHost = host;
         cfg.Save();
         UpdatePhonePreview();
     }
@@ -485,7 +560,7 @@ public partial class MainWindow : Window
 
     void BtnFreebuffCopy_Click(object sender, RoutedEventArgs e)
     {
-        CopyText($"Base URL: {freebuff.ConfiguredBaseUrl}{Environment.NewLine}API Key: {freebuff.ConfiguredApiKey}");
+        CopyText($"Base URL: {freebuff.ConfiguredBaseUrl}{Environment.NewLine}API Key: {freebuff.ConfiguredApiKey}", BtnFreebuffCopy);
     }
 
     void RunFreebuffOperation(Func<FreebuffStatus> operation)
@@ -559,15 +634,33 @@ public partial class MainWindow : Window
 
     void BtnTsFix_Click(object sender, RoutedEventArgs e) => tsAction();
 
-    void BtnCopyPhone_Click(object sender, RoutedEventArgs e) { if (HeroUrlText.Tag is string s) CopyText(s); }
+    void BtnCopyPhone_Click(object sender, RoutedEventArgs e) { if (HeroUrlText.Tag is string s) CopyText(s, BtnCopyPhone); }
     void PcUrlText_Click(object sender, MouseButtonEventArgs e) { if (PcUrlText.Tag is string s) CopyText(s); }
     void HeroUrlText_Click(object sender, MouseButtonEventArgs e) { if (HeroUrlText.Tag is string s) CopyText(s); }
-    void BtnCopyTunnel_Click(object sender, RoutedEventArgs e) { if (TunnelText.Tag is string s) CopyText(s); }
+    void BtnCopyTunnel_Click(object sender, RoutedEventArgs e) { if (TunnelText.Tag is string s) CopyText(s, BtnCopyTunnel); }
 
     void CopyText(string s)
     {
         try { Clipboard.SetText(s); Log("已复制: " + s); }
         catch { }
+    }
+
+    /// <summary>复制并让来源按钮闪现「✓ 已复制」反馈（1.2 秒后还原）。</summary>
+    void CopyText(string s, Button from)
+    {
+        CopyText(s);
+        if (from == null) return;
+        if (from.Content is not string original || string.IsNullOrEmpty(original)) return;
+        from.Content = "✓ 已复制";
+        from.IsEnabled = false;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.2) };
+        timer.Tick += (_1, _2) =>
+        {
+            timer.Stop();
+            from.Content = original;
+            from.IsEnabled = true;
+        };
+        timer.Start();
     }
 
     void BtnHelp_Click(object sender, RoutedEventArgs e) => new HelpWindow { Owner = this }.ShowDialog();
@@ -861,15 +954,16 @@ public partial class MainWindow : Window
 
     void OnClosing(object sender, CancelEventArgs e)
     {
-        svc.Dispose();
         if (svc.IsDshRunning())
         {
             var r = MessageBox.Show(this,
                 "dsh web 正在运行。\n\n点击「是」保持它继续在后台运行（本应用关闭不影响服务）；\n点击「否」先停止服务再退出。",
                 "退出确认", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (r == MessageBoxResult.No) svc.StopDsh();
-            else if (r == MessageBoxResult.Cancel) { e.Cancel = true; return; }
+            else if (r == MessageBoxResult.Cancel) { e.Cancel = true; return; } // 取消退出：服务保持原样，不 Dispose
         }
+        SaveWindowState();
         cfg.Save();
+        svc.Dispose(); // 只有真正退出时才释放（此前在弹窗前就 Dispose，点「取消」会弄坏日志尾随）
     }
 }

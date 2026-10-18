@@ -34,17 +34,21 @@ public sealed class FreebuffService
 
     readonly Action<string> log;
     readonly string projectDir;
+    readonly string dockerDesktopPath;
     int operationInProgress;
 
-    public FreebuffService(string projectDir, Action<string> log = null)
+    public FreebuffService(string projectDir, Action<string> log = null, string dockerDesktopPath = null)
     {
         this.projectDir = projectDir ?? "";
         this.log = log;
+        this.dockerDesktopPath = string.IsNullOrWhiteSpace(dockerDesktopPath)
+            ? @"E:\DockerDesktop\Docker Desktop.exe"
+            : dockerDesktopPath;
     }
 
     string EnvPath => Path.Combine(projectDir, ".env");
     string ComposePath => Path.Combine(projectDir, "compose.yaml");
-    string DockerDesktopPath => @"E:\DockerDesktop\Docker Desktop.exe";
+    string DockerDesktopPath => dockerDesktopPath;
 
     public int ConfiguredPort
     {
@@ -120,7 +124,7 @@ public sealed class FreebuffService
             if (!IsDockerReady())
             {
                 if (!File.Exists(DockerDesktopPath))
-                    return new FreebuffStatus { State = FreebuffState.DockerUnavailable, Message = "找不到 E:\\DockerDesktop\\Docker Desktop.exe" };
+                    return new FreebuffStatus { State = FreebuffState.DockerUnavailable, Message = "找不到 Docker Desktop：" + DockerDesktopPath };
 
                 Log("Docker 引擎未就绪，正在启动 Docker Desktop...");
                 try { Process.Start(new ProcessStartInfo(DockerDesktopPath) { UseShellExecute = true }); }

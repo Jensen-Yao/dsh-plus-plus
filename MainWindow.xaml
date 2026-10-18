@@ -24,7 +24,7 @@
                 </StackPanel>
                 <Button x:Name="ThemeToggleBtn" Style="{StaticResource IconButtonStyle}"
                         HorizontalAlignment="Right" VerticalAlignment="Top"
-                        ToolTip="切换深浅色（应用会重启）" Click="ThemeToggle_Click">
+                        ToolTip="切换深浅色（即时生效）" Click="ThemeToggle_Click">
                     <Path x:Name="ThemeIcon" Style="{StaticResource HeaderIcon}"
                           Data="{StaticResource SunGeom}" Stroke="{DynamicResource TextSecondaryBrush}"/>
                 </Button>
@@ -162,6 +162,8 @@
                                            Click="LinkConfigDir_Click">打开配置目录</Hyperlink>
                             </TextBlock>
                         </StackPanel>
+                        <TextBlock x:Name="VersionText" Text="v?" FontSize="11" Margin="2,6,0,0"
+                                   Foreground="{DynamicResource TextTertiaryBrush}"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -258,7 +260,7 @@
 
                                     <TextBlock Text="服务启动后，可把这组信息手动添加到任意客户端；它不会自动成为 DSH、Codex 或其他 Agent 的默认 Provider。"
                                                Style="{StaticResource TbHint}" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                                    <TextBlock Text="项目目录：F:\\freebuffapi\nDocker Desktop：E:\\DockerDesktop\\Docker Desktop.exe"
+                                    <TextBlock x:Name="FreebuffPathsText" Text="项目目录：…\nDocker Desktop：…"
                                                Style="{StaticResource TbHint}" Margin="0,12,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </ScrollViewer>

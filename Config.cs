@@ -20,6 +20,18 @@ public class AppConfig
     public string TailscalePath { get; set; } = @"C:\Program Files\Tailscale\tailscale.exe";
     public bool AutoUpdatePlugins { get; set; } = true;  // dsh++ 启动时自动更新 profiles 插件（dsh 运行中则跳过）
 
+    // 窗口状态记忆（NaN = 未保存过，用默认位置）
+    public double WinLeft { get; set; } = double.NaN;
+    public double WinTop { get; set; } = double.NaN;
+    public double WinWidth { get; set; } = double.NaN;
+    public double WinHeight { get; set; } = double.NaN;
+    public bool WinMaximized { get; set; }
+    public int LastPage { get; set; } = 0;
+
+    // Freebuff 组件路径（可按机器调整）
+    public string FreebuffDir { get; set; } = @"F:\freebuffapi";
+    public string FreebuffDocker { get; set; } = @"E:\DockerDesktop\Docker Desktop.exe";
+
     public static string ConfigDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "dsh-control");
     public static string ConfigPath => Path.Combine(ConfigDir, "config.json");
