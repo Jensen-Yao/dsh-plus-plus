@@ -101,5 +101,54 @@ public static partial class SelfCheck
         reader.Close();
         File.WriteAllText(Path.Combine(realGit, "pnpm-lock.yaml"), "not: [valid");
         check("malformed lockfile is reported rather than silently trusted", PluginLock.Read(realGit).Error.Length > 0);
+
+        var syncWeb = Path.Combine(fixture, "sync-web");
+        var syncDesktop = Path.Combine(fixture, "sync-desktop");
+        Directory.CreateDirectory(syncWeb);
+        Directory.CreateDirectory(syncDesktop);
+        Directory.CreateDirectory(Path.Combine(syncWeb, "node_modules", "range-plugin"));
+        File.WriteAllText(Path.Combine(syncWeb, "node_modules", "range-plugin", "package.json"), "{\"name\":\"range-plugin\",\"version\":\"1.2.3\"}");
+        File.WriteAllText(Path.Combine(syncWeb, "package.json"), """
+        {
+          "name":"web","private":true,
+          "dependencies":{
+            "@deepseek-ai/ignored":"0.2.1-rc.2",
+            "electron":"^44.0.0",
+            "range-plugin":"^1.0.0",
+            "git-plugin":"github:owner/repo#v1.0.0",
+            "shared-plugin":"1.0.0"
+          },
+          "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app","range-plugin","git-plugin"]}}
+        }
+        """);
+        File.WriteAllText(Path.Combine(syncDesktop, "package.json"), """
+        {
+          "name":"desktop","private":true,
+          "dependencies":{"obsolete-plugin":"0.9.0","shared-plugin":"1.0.0"},
+          "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}
+        }
+        """);
+        File.WriteAllText(Path.Combine(syncWeb, "cordis.patch.yml"), """
+        - id: web-ui-remote-web-ui
+          config:
+            plugin: '@linxin666/dsh-remote-web-ui'
+            autoTunnel: true
+        - id: ui-theme
+          name: "@deepseek-ai/dsh-client-ui-theme"
+          config:
+            preference: light
+        """);
+        var syncPlan = UpdateService.BuildDesktopSyncPlan(syncWeb, syncDesktop);
+        var plannedDependencies = syncPlan.Manifest["dependencies"]!.AsObject();
+        check("desktop sync pins web npm ranges to installed versions", plannedDependencies["range-plugin"]!.GetValue<string>() == "1.2.3");
+        check("desktop sync preserves Git declarations and excludes official shell dependencies",
+            plannedDependencies["git-plugin"]!.GetValue<string>() == "github:owner/repo#v1.0.0"
+            && plannedDependencies.ContainsKey("@deepseek-ai/ignored") == false && plannedDependencies.ContainsKey("electron") == false);
+        check("desktop sync plans obsolete external dependency removal", syncPlan.DependencyChanges.Any(change => change.Name == "obsolete-plugin" && change.Web == "<移除>"));
+        check("desktop sync preserves official shell bundles then web community bundles",
+            syncPlan.Manifest["dsh"]!["profile"]!["bundles"]!.AsArray().Select(node => node!.GetValue<string>()).SequenceEqual(new[]
+            { "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "range-plugin", "git-plugin" }));
+        check("desktop sync removes web-only remote tunnel patch but keeps user patches",
+            !syncPlan.Patch.Contains("web-ui-remote-web-ui") && syncPlan.Patch.Contains("ui-theme"));
     }
 }

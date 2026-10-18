@@ -21,6 +21,7 @@ public partial class MainWindow : Window
 {
     readonly AppConfig cfg;
     readonly DshService svc;
+    readonly DesktopService desktop;
     readonly UpdateService upd;
     readonly FreebuffService freebuff;
     readonly DispatcherTimer refreshTimer;
@@ -42,14 +43,17 @@ public partial class MainWindow : Window
     string alphaVersion;
     string activeBind;
     bool running;
+    bool desktopRunning;
+    bool desktopInstalled;
     DateTime lastRemoteRefresh;
-    readonly string[] pageNames = { "服务总览", "插件管理", "版本与备份", "远程连接", "启动设置", "数据与路径", "Freebuff", "诊断与日志" };
+    readonly string[] pageNames = { "服务总览", "桌面版", "插件管理", "版本与备份", "远程连接", "启动设置", "数据与路径", "Freebuff", "诊断与日志" };
 
     public MainWindow()
     {
         cfg = App.Cfg;
         svc = new DshService(cfg, Log);
-        upd = new UpdateService(cfg, svc, Log);
+        desktop = new DesktopService(cfg, svc, Log);
+        upd = new UpdateService(cfg, svc, desktop, Log);
         freebuff = new FreebuffService(cfg.FreebuffDir, Log, cfg.FreebuffDocker);
         InitializeComponent();
         RestoreWindow();
@@ -58,10 +62,11 @@ public partial class MainWindow : Window
         RefreshBackups();
         BuildStorageRows();
         RefreshVersions();
+        RefreshDesktopStatus();
         VersionText.Text = "v" + UpdateService.AppVersion();
         FreebuffPathsText.Text = cfg.FreebuffDir + "\n" + cfg.FreebuffDocker;
         ready = true;
-        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 7);
+        NavList.SelectedIndex = App.StartPage >= 0 ? App.StartPage : Math.Clamp(cfg.LastPage, 0, 8);
         svc.StartLogTail(AppendLog);
         refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
         refreshTimer.Tick += async (_, _) => await RefreshAsync();
@@ -137,14 +142,14 @@ public partial class MainWindow : Window
     void NavList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ready) return;
-        var pages = new[] { PageSvc, PagePlugins, PageUpdates, PagePhone, PageAdv, PageStore, PageFreebuff, PageLog };
+        var pages = new[] { PageSvc, PageDesktop, PagePlugins, PageUpdates, PagePhone, PageAdv, PageStore, PageFreebuff, PageLog };
         var selected = Math.Clamp(NavList.SelectedIndex, 0, pages.Length - 1);
         for (var index = 0; index < pages.Length; index++)
             pages[index].Visibility = index == selected ? Visibility.Visible : Visibility.Collapsed;
         BreadcrumbText.Text = "工作空间 / " + pageNames[selected];
         if (App.RenderDirectory == null) { cfg.LastPage = selected; cfg.Save(); }
         if (selected == 2) RefreshBackups();
-        if (selected == 6 && App.RenderDirectory == null) _ = RefreshFreebuffAsync();
+        if (selected == 7 && App.RenderDirectory == null) _ = RefreshFreebuffAsync();
     }
 
     void LoadSettings()
@@ -303,6 +308,7 @@ public partial class MainWindow : Window
 
     void SetControlsEnabled(bool enabled)
     {
+        PageDesktop.IsEnabled = enabled;
         PagePlugins.IsEnabled = enabled;
         PageUpdates.IsEnabled = enabled;
         PageAdv.IsEnabled = enabled;
@@ -312,6 +318,7 @@ public partial class MainWindow : Window
         BtnRestart.IsEnabled = enabled && running;
         BtnStop.IsEnabled = enabled && running;
         BtnPluginCheck.IsEnabled = enabled && pluginCheckTask is not { IsCompleted: false };
+        RefreshDesktopControls(enabled);
     }
 
     void Progress(string message)
@@ -330,7 +337,7 @@ public partial class MainWindow : Window
     async void BtnRestart_Click(object sender, RoutedEventArgs e)
         => await RunTaskAsync("重启 DSH", async cancellation => await Task.Run(() => svc.RestartAsync(cancellation)));
     void BtnOpenUi_Click(object sender, RoutedEventArgs e) => svc.OpenUi();
-    void BtnDiagnostics_Click(object sender, RoutedEventArgs e) => NavList.SelectedIndex = 7;
+    void BtnDiagnostics_Click(object sender, RoutedEventArgs e) => NavList.SelectedIndex = 8;
     void BtnCancelTask_Click(object sender, RoutedEventArgs e)
     {
         taskCancellation?.Cancel();
@@ -424,9 +431,9 @@ public partial class MainWindow : Window
         await CheckPluginsInUiAsync(plugins.Where(plugin => profile == "全部 Profile" || plugin.Profile == profile).ToList());
     }
 
-    async Task CheckPluginsInUiAsync(List<PluginItem> scope)
+    async Task<PluginCheckSummary> CheckPluginsInUiAsync(List<PluginItem> scope)
     {
-        if (busy || pluginCheckTask is { IsCompleted: false }) return;
+        if (busy || pluginCheckTask is { IsCompleted: false }) return null;
         using var cancellation = new CancellationTokenSource();
         pluginCheckCancellation = cancellation;
         BtnPluginCheck.IsEnabled = false;
@@ -437,6 +444,7 @@ public partial class MainWindow : Window
             var summary = await pluginCheckTask;
             PluginCheckText.Text = $"{DateTime.Now:HH:mm} 检查完成 · {summary.Updates} 有更新 · {summary.Failed} 失败 · {summary.SourceIssues} 来源提示";
             OverviewPluginCheck.Text = summary.Failed > 0 || summary.SourceIssues > 0 ? "插件检查需要关注" : summary.Updates > 0 ? $"插件发现 {summary.Updates} 项更新" : "web 插件已检查";
+            return summary;
         }
         catch (OperationCanceledException) { PluginCheckText.Text = "检查已取消，未修改依赖。"; }
         catch (Exception error) { PluginCheckText.Text = "检查未完成：" + CommandRunner.Redact(error.Message); }
@@ -446,6 +454,7 @@ public partial class MainWindow : Window
             BtnPluginCheck.IsEnabled = !busy;
             ApplyPluginFilter();
         }
+        return null;
     }
 
     async Task StopPluginCheckAsync()
@@ -661,7 +670,7 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception exception) { BindText.Text = exception.Message; }
-        finally { refreshing = false; }
+        finally { RefreshDesktopStatus(); refreshing = false; }
     }
 
     async void BtnTsFix_Click(object sender, RoutedEventArgs e)
@@ -686,6 +695,94 @@ public partial class MainWindow : Window
     void PcUrlText_Click(object sender, MouseButtonEventArgs e) { if (running) Copy(svc.LocalUrl()); }
     void HeroUrlText_Click(object sender, MouseButtonEventArgs e) { if (HeroUrlText.Tag is string url) Copy(url); }
     void BtnCopyPhone_Click(object sender, RoutedEventArgs e) { if (HeroUrlText.Tag is string url) Copy(url, BtnCopyPhone); }
+
+    void RefreshDesktopStatus()
+    {
+        var status = desktop.Status();
+        desktopInstalled = status.Installed;
+        desktopRunning = status.Running;
+        var desktopPlugins = plugins.Where(plugin => plugin.Profile == "desktop").ToList();
+        DesktopStateText.Text = status.State;
+        DesktopVersionText.Text = status.Installed ? status.Version : "未安装";
+        DesktopPluginText.Text = desktopPlugins.Count == 0 ? "空 Profile" : $"{desktopPlugins.Count(plugin => !plugin.IsIndirect)} 入口";
+        DesktopPathText.Text = status.Installed ? status.Executable : cfg.DshDesktopDir + "\\DeepSeek Harness.exe";
+        DesktopProfilePathText.Text = "desktop profile：" + status.ProfileDirectory;
+        DesktopDataPathText.Text = "桌面状态与日志：" + status.DataDirectory;
+        OverviewDesktopText.Text = status.Installed
+            ? $"官方桌面版 {status.Version} · {status.State} · {status.ProcessCount} 进程"
+            : "官方桌面版未安装";
+        DesktopHintText.Text = !status.Installed
+            ? "未找到桌面版程序。可在「数据与路径」修改安装目录。"
+            : status.Running ? $"正在运行 {status.ProcessCount} 个进程；desktop profile 独立于 web profile。"
+            : "桌面版当前未运行。启动它不会启动 dsh++ 管理的 Web 服务。";
+        if (!string.IsNullOrEmpty(status.LatestCrashLog))
+            DesktopHintText.Text += "\n最近一次 Host 崩溃日志：" + Path.GetFileName(status.LatestCrashLog);
+        if (status.TaskLedgerOwner is "桌面版" or "Web 端")
+            DesktopHintText.Text += $"\n任务看板单写锁当前由{status.TaskLedgerOwner}持有；另一端同时启动时该插件会降级，核心界面仍可用。";
+        RefreshDesktopControls(!busy);
+    }
+
+    void RefreshDesktopControls(bool enabled)
+    {
+        if (BtnDesktopStart == null) return;
+        BtnDesktopStart.IsEnabled = enabled && desktopInstalled && !desktopRunning;
+        BtnDesktopStop.IsEnabled = enabled && desktopInstalled && desktopRunning;
+        BtnDesktopRestart.IsEnabled = enabled && desktopInstalled && desktopRunning;
+        BtnDesktopSync.IsEnabled = enabled && desktopInstalled && !upd.Busy;
+        BtnDesktopCheck.IsEnabled = enabled && pluginCheckTask is not { IsCompleted: false };
+    }
+
+    async void BtnDesktopStart_Click(object sender, RoutedEventArgs e)
+        => await RunTaskAsync("启动桌面版", async cancellation => await desktop.StartAsync());
+    async void BtnDesktopStop_Click(object sender, RoutedEventArgs e)
+        => await RunTaskAsync("停止桌面版", async _ => await desktop.StopAsync());
+    async void BtnDesktopRestart_Click(object sender, RoutedEventArgs e)
+        => await RunTaskAsync("重启桌面版", async cancellation => await desktop.RestartAsync());
+    void BtnDesktopInstallDir_Click(object sender, RoutedEventArgs e) => desktop.OpenDirectory(cfg.DshDesktopDir);
+    void BtnDesktopProfileDir_Click(object sender, RoutedEventArgs e) => desktop.OpenDirectory(desktop.ProfileDirectory);
+    void BtnDesktopLogs_Click(object sender, RoutedEventArgs e)
+    {
+        if (Directory.Exists(desktop.LogDirectory)) desktop.OpenDirectory(desktop.LogDirectory);
+        else DesktopHintText.Text = "桌面日志目录尚不存在：" + desktop.LogDirectory;
+    }
+
+    async void BtnDesktopCheck_Click(object sender, RoutedEventArgs e)
+    {
+        var scope = plugins.Where(plugin => plugin.Profile == "desktop").ToList();
+        if (scope.Count == 0) { DesktopCheckText.Text = "desktop profile 没有外部插件。"; return; }
+        DesktopCheckText.Text = "正在后台检查桌面插件…";
+        var summary = await CheckPluginsInUiAsync(scope);
+        if (summary != null)
+            DesktopCheckText.Text = $"{DateTime.Now:HH:mm} 桌面插件检查完成 · {summary.Updates} 有更新 · {summary.Failed} 失败 · {summary.SourceIssues} 来源提示";
+    }
+
+    async void BtnDesktopSync_Click(object sender, RoutedEventArgs e)
+    {
+        var web = plugins.FirstOrDefault(plugin => plugin.Profile == "web" && !plugin.IsIndirect);
+        var desktopPlugin = plugins.FirstOrDefault(plugin => plugin.Profile == "desktop" && !plugin.IsIndirect);
+        if (web == null || desktopPlugin == null) { DesktopCheckText.Text = "需要同时存在 web 与 desktop profile。"; return; }
+        List<PlannedChange> changes;
+        try
+        {
+            var plan = UpdateService.BuildDesktopSyncPlan(web.ProfileDir, desktopPlugin.ProfileDir);
+            changes = plan.DependencyChanges.Select(change => new PlannedChange(change.Name,
+                string.IsNullOrEmpty(change.Desktop) ? "新增 " + change.Web : change.Web == "<移除>" ? "移除当前声明" : $"{change.Desktop} → {change.Web}")).ToList();
+            if (plan.BundleChanges.Count > 0) changes.Add(new PlannedChange("desktop bundle 层", plan.BundleChanges[0].Desktop + " → " + plan.BundleChanges[0].Web));
+            changes.Add(new PlannedChange("cordis.patch.yml", "复制 web 用户配置；移除 web 远程自动隧道配置。"));
+            changes.Add(new PlannedChange("任务看板", "桌面版与 Web 端共享全局单写锁；同一时间只有一端能提供完整任务看板。"));
+        }
+        catch (Exception error)
+        {
+            DesktopCheckText.Text = "无法生成同步计划：" + CommandRunner.Redact(error.Message);
+            return;
+        }
+        if (!ConfirmMaintenance("从 Web 同步桌面配置", changes)) return;
+        await RunTaskAsync("同步桌面版配置", async cancellation =>
+            await Task.Run(() => upd.SynchronizeDesktopFromWebAsync(Progress, cancellation)));
+        ReloadPlugins();
+        RefreshDesktopStatus();
+        BtnDesktopCheck_Click(sender, e);
+    }
 
     async Task RefreshFreebuffAsync()
     {
@@ -722,7 +819,8 @@ public partial class MainWindow : Window
     {
         StoragePanel.Children.Clear();
         var installation = new StorageRowInfo { Name = "DSH 安装目录", Path = cfg.DshAppDir, Kind = "installation", CanEdit = true };
-        foreach (var row in new[] { installation }.Concat(svc.StorageRows()))
+        var desktopInstallation = new StorageRowInfo { Name = "官方桌面版安装目录", Path = cfg.DshDesktopDir, Kind = "desktop", CanEdit = true };
+        foreach (var row in new[] { installation, desktopInstallation }.Concat(svc.StorageRows()))
         {
             var container = new Grid { Margin = new Thickness(0, 0, 0, 18) };
             container.ColumnDefinitions.Add(new ColumnDefinition());
@@ -755,12 +853,14 @@ public partial class MainWindow : Window
         var dialog = new InputDialog("修改 " + row.Name, "请输入目录绝对路径。", row.Path) { Owner = this };
         if (dialog.ShowDialog() != true || !Path.IsPathFullyQualified(dialog.Value)) return;
         if (row.Kind == "installation") cfg.DshAppDir = dialog.Value;
+        else if (row.Kind == "desktop") cfg.DshDesktopDir = dialog.Value;
         else if (row.Kind == "dsh") cfg.DshHome = dialog.Value;
         else cfg.AgentsHome = dialog.Value;
         cfg.Save();
         BuildStorageRows();
         ReloadPlugins();
         RefreshVersions();
+        RefreshDesktopStatus();
     }
 
     async void BtnDiagnose_Click(object sender, RoutedEventArgs e)

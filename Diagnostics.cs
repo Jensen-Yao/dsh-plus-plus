@@ -12,6 +12,15 @@ public static class Diagnostics
         report.AppendLine($"诊断 {DateTime.Now:yyyy-MM-dd HH:mm:ss} · dsh++ {UpdateService.AppVersion()}");
         var (version, error) = updates.LocalDshVersion();
         report.AppendLine("DSH: " + (error ?? version));
+        var desktop = new DesktopService(cfg, svc);
+        var desktopStatus = desktop.Status();
+        report.AppendLine("桌面版: " + (desktopStatus.Installed
+            ? $"{desktopStatus.Version} · {desktopStatus.State} · {desktopStatus.ProcessCount} 进程"
+            : "未安装"));
+        report.AppendLine("桌面 Profile: " + desktop.ProfileDirectory);
+        report.AppendLine("任务看板单写锁: " + desktop.TaskLedgerOwner() + " · " + desktop.TaskLedgerLock);
+        if (desktopStatus.LatestCrashLog.Length > 0)
+            report.AppendLine("桌面最近 Host 日志: " + desktopStatus.LatestCrashLog);
         report.AppendLine("安装目录: " + cfg.DshAppDir);
         report.AppendLine("数据目录: " + svc.HomeBase);
         try { report.AppendLine("计划绑定: " + svc.ResolveBindHost()); }

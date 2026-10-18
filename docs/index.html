@@ -122,10 +122,10 @@
 <div class="hero">
   <div class="wrap">
     <h2>让手机打开<span>和电脑一样</span>的界面</h2>
-    <p>dsh++ 3.2 集中管理服务、插件、版本、恢复点和远程连接。后台检查聚合插件与实际来源，更新后核对版本或提交；失败后尝试恢复，插件市场重启时保持远程接续。</p>
+    <p>dsh++ 3.3 集中管理 Web 服务、官方桌面版、插件、版本、恢复点和远程连接。后台检查聚合插件与实际来源，更新后核对版本或提交；桌面版共享数据但保留独立 profile。</p>
     <div class="tags">
       <span>Windows 10/11</span><span>.NET 8 · WPF</span><span>深浅双主题</span>
-      <span>Tailscale</span><span>插件管理</span><span>中断恢复</span><span>Freebuff · Docker</span><span>MIT</span>
+      <span>Tailscale</span><span>官方桌面版</span><span>插件管理</span><span>中断恢复</span><span>MIT</span>
     </div>
     <div class="cta">
       <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载最新版</a>
@@ -144,6 +144,10 @@
       <img src="screenshots/main-light.png" alt="dsh++ 浅色主题" />
       <figcaption>浅色主题</figcaption>
     </figure>
+    <figure>
+      <img src="screenshots/desktop-light.png" alt="dsh++ 官方桌面版管理页" />
+      <figcaption>官方桌面版管理</figcaption>
+    </figure>
   </div>
 </div>
 
@@ -153,6 +157,7 @@
     <p class="lead">一个窗口，管好 dsh 的全部日常操作</p>
     <div class="grid">
       <div class="card"><h4><span class="dot"></span>一键启停</h4><p>启动、停止与重启 dsh web，验证网页就绪。本机入口保持 localhost，远程入口绑定所选网卡的具体 IP。</p></div>
+      <div class="card"><h4><span class="dot"></span>官方桌面版</h4><p>管理 Electron 桌面壳进程、版本、日志和 desktop profile；可把 web 的社区插件与用户配置同步过去，并用官方桌面启动结果验证。</p></div>
       <div class="card"><h4><span class="dot"></span>手机入口</h4><p>同一 Wi-Fi / 自定义域名 / Tailscale 三种方式，大字地址一键复制，附「缺什么点什么」检查清单。</p></div>
       <div class="card"><h4><span class="dot"></span>Tailscale 集成</h4><p>登录 / 连接 / 断开 / 安装一体化，跨网络也完全实时，状态与 ts.net 域名实时显示。</p></div>
       <div class="card"><h4><span class="dot"></span>存储位置管理</h4><p>settings / sessions / storages / profiles / skills / agent-presets 一页看清；技能与 MCP 位置一键直达，主目录可直接修改。</p></div>
@@ -172,6 +177,7 @@
       <div class="step"><div class="n"></div><div><b>启动服务</b><span>在「服务总览」启动，等待网页就绪后打开 DSH。</span></div></div>
       <div class="step"><div class="n"></div><div><b>远程连接（可选）</b><span>在「远程连接」选择连接方式，在「启动设置」关闭仅本机访问并重启。新配置默认要求远程配对。</span></div></div>
       <div class="step"><div class="n"></div><div><b>维护插件</b><span>在「插件管理」检查版本并勾选更新；维护记录与恢复点位于「版本与备份」。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>桌面版（可选）</b><span>在「数据与路径」确认桌面安装目录，在「桌面版」启动、检查插件或从 Web 同步配置。</span></div></div>
     </div>
   </div>
 </section>

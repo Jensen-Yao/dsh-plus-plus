@@ -22,7 +22,7 @@ public static class RenderCheck
             {
                 window.Width = size.Width;
                 window.Height = size.Height;
-                for (var page = 0; page < 8; page++)
+                for (var page = 0; page < 9; page++)
                 {
                     window.SelectPage(page);
                     await window.Dispatcher.InvokeAsync(() => window.UpdateLayout(), DispatcherPriority.ApplicationIdle);

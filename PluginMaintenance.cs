@@ -72,10 +72,15 @@ public partial class UpdateService
         return result;
     }
 
-    async Task ValidateAsync(CancellationToken cancellation)
+    async Task ValidateAsync(CancellationToken cancellation, string profileName = "web")
     {
+        if (profileName == "desktop")
+        {
+            await desktopService.ValidateStartupAsync(progress: null, cancellation);
+            return;
+        }
         var bin = Path.Combine(cfg.DshAppDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
-        var start = CommandRunner.Create("node", new[] { bin, "--profile", "web", "--dump-config" }, cfg.DshAppDir);
+        var start = CommandRunner.Create("node", new[] { bin, "--profile", profileName, "--dump-config" }, cfg.DshAppDir);
         start.Environment["DSH_HOME"] = svc.HomeBase;
         var result = await CommandRunner.RunAsync(start, TimeSpan.FromSeconds(45), cancellation: cancellation);
         var detail = CommandRunner.Redact(result.Output);
@@ -200,7 +205,8 @@ public partial class UpdateService
     }
 
     async Task<(bool ok, string msg)> MaintainAsync(List<string> directories, string label, Func<Task> change,
-        Action<string> progress, CancellationToken cancellation, bool recovery = false, Func<Task> beforeBackup = null)
+        Action<string> progress, CancellationToken cancellation, bool recovery = false, Func<Task> beforeBackup = null,
+        bool includeDshService = true, string profileName = "web")
     {
         if (!await svc.Maintenance.WaitAsync(0, cancellation)) return (false, "其他启动或维护任务正在进行。");
         var backups = new List<MaintenanceBackup>();
@@ -236,7 +242,7 @@ public partial class UpdateService
             record = new MaintenanceRecord { Label = label, Backups = backups };
             activeRecord = record;
             SaveRecord(record);
-            wasRunning = svc.IsDshRunning();
+            wasRunning = includeDshService && svc.IsDshRunning();
             foreach (var directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 backups.Add(CreateBackup(directory, label));
@@ -254,8 +260,8 @@ public partial class UpdateService
             changed = true;
             await change();
             Stage("正在检查配置组合");
-            await ValidateAsync(cancellation);
-            if (wasRunning && cfg.RestartAfterUpdate)
+            await ValidateAsync(cancellation, profileName);
+            if (wasRunning && includeDshService && cfg.RestartAfterUpdate)
             {
                 Stage("正在启动并验证服务");
                 var start = await svc.StartCoreAsync(cancellation);

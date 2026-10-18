@@ -52,6 +52,26 @@ public partial class App : Application
             Shutdown(result.Item1 ? 0 : 1);
             return;
         }
+        if (e.Args.Length > 1 && e.Args[0] == "--desktop")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var desktop = new DesktopService(config, service);
+            var updates = new UpdateService(config, service, desktop);
+            var result = System.Threading.Tasks.Task.Run(async () => e.Args[1] switch
+            {
+                "start" => await desktop.StartAsync(),
+                "stop" => await desktop.StopAsync(),
+                "restart" => await desktop.RestartAsync(),
+                "sync-web" => await updates.SynchronizeDesktopFromWebAsync(),
+                "status" => (desktop.Installed, desktop.Status().State),
+                _ => (false, "Usage: --desktop start|stop|restart|sync-web|status"),
+            }).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "desktop-result.txt"), result.Item2);
+            Shutdown(result.Item1 ? 0 : 1);
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--check-plugins")
         {
             var config = AppConfig.Load();
@@ -73,7 +93,7 @@ public partial class App : Application
         }
         for (var i = 0; i < e.Args.Length - 1; i++)
             if (e.Args[i] == "--page" && int.TryParse(e.Args[i + 1], out var p))
-                StartPage = Math.Clamp(p, 0, 7);
+                StartPage = Math.Clamp(p, 0, 8);
         for (var i = 0; i < e.Args.Length - 1; i++)
             if (e.Args[i] == "--render-check") RenderDirectory = e.Args[i + 1];
         UiCheck = Array.IndexOf(e.Args, "--ui-check") >= 0;

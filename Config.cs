@@ -9,6 +9,7 @@ namespace DshControl;
 public class AppConfig
 {
     public string DshAppDir { get; set; } = @"F:\DeepSeek harness\dsh-app";
+    public string DshDesktopDir { get; set; } = @"F:\dsh-desktop";
     public int Port { get; set; } = 3080;
     public string Mode { get; set; } = "local";
     public string AccessMode { get; set; } = "ip";   // ip | domain | tailscale

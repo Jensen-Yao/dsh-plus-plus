@@ -64,15 +64,17 @@ public partial class UpdateService
 {
     readonly AppConfig cfg;
     readonly DshService svc;
+    readonly DesktopService desktopService;
     readonly Action<string> log;
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(30) };
     const string Repo = "Jensen-Yao/dsh-plus-plus";
     string ProfilesRoot => Path.Combine(svc.HomeBase, "profiles");
 
-    public UpdateService(AppConfig cfg, DshService svc, Action<string> log = null)
+    public UpdateService(AppConfig cfg, DshService svc, DesktopService desktop = null, Action<string> log = null)
     {
         this.cfg = cfg;
         this.svc = svc;
+        desktopService = desktop ?? new(cfg, svc);
         this.log = log;
     }
 

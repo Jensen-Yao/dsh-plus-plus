@@ -1,8 +1,9 @@
 # dsh++
 
-DeepSeek Harness 的 Windows 桌面控制台。3.2 补全后台插件检查、聚合子包发现、锁文件来源提示和安装目标核验，保留重启接续、维护记录、中断恢复与双主题界面。
+DeepSeek Harness 的 Windows 桌面控制台。3.3 增加官方桌面版管理，补全后台插件检查、聚合子包发现、锁文件来源提示和安装目标核验，保留重启接续、维护记录、中断恢复与双主题界面。
 
 ![dsh++ 插件管理](docs/screenshots/plugins-light.png)
+![dsh++ 桌面版管理](docs/screenshots/desktop-light.png)
 
 ## 使用
 
@@ -44,6 +45,15 @@ pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁�
 
 固定 GitHub tag 不会自动跳到新 tag。运行时更新器不会自动修复所有社区插件的 API 不兼容；组合检查只验证静态配置，原服务此前未运行时不会自行拉起服务做运行验证。
 
+## 官方桌面版
+
+「桌面版」页管理官方 Electron 桌面壳。它显示安装路径、版本、进程数、desktop profile 与桌面状态目录，支持启动、停止、重启、打开安装目录 / profile / 日志，以及对 desktop profile 的所有外部插件做只读版本检查。桌面壳仍由官方安装包更新，dsh++ 不替换其内置 runtime。
+
+「从 Web 同步配置」把 web profile 的社区插件入口、bundle 顺序和用户 patch 配置投影到 desktop profile：npm 范围会钉成 web 当前安装版本；官方 `@deepseek-ai/*` 依赖、Electron 与 Playwright 构建依赖不复制；`web-ui-remote-web-ui` 的自动公网隧道覆盖会在桌面端移除。同步前 dsh++ 生成确认清单；执行时停止桌面版、备份 desktop profile、安装依赖、核对与 web 的实际版本、用当前 DSH runtime 做 `--profile desktop --dump-config` 组合检查，失败回滚，成功后按原状态恢复启动。web 服务本身不需要停止。
+
+桌面版与 web 端共享 `~/.dsh` 的会话、凭据、技能和工作区，但使用独立 `profiles/desktop`。两端可以同时待机；仍应避免同时在两个壳里编辑同一个会话。
+任务看板使用全局单写锁，dsh++ 会在桌面页显示当前持有端。桌面版与 Web 端同时运行时，后启动一端的任务看板会降级；核心聊天、会话和插件界面仍可用。需要完整任务看板时，让对应一端独占运行。
+
 ## 版本与备份
 
 - DSH：查看 npm latest / alpha 通道，安装前解析精确版本，只备份安装目录与实际同步的 web profile。内核更新时同步 web profile 的官方伴随包，也可以单独点“同步官方依赖”；目标版本来自实际内核安装目录，其他 profile 与社区插件不参加这一步。
@@ -65,6 +75,7 @@ Freebuff 保留为独立 Docker 组件，由用户手动启停。启动 dsh++ �
 | 设置 | 用途 |
 | --- | --- |
 | DshAppDir | 包含 node_modules/@deepseek-ai/dsh 的安装目录 |
+| DshDesktopDir | 官方桌面版安装目录，默认 F:\dsh-desktop |
 | DshHome / AgentsHome | 传给服务的 DSH_HOME / DSH_AGENTS_HOME |
 | Mode / AccessMode / BindHost | 本机或远程模式、连接方式、具体网卡；BindHost 为空时自动选择 |
 | RestartAfterUpdate | 更新后恢复原先运行的服务，默认开启 |
@@ -82,16 +93,19 @@ dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
 .\publish\dsh-plus-plus.exe --render-check "F:\temp\dshpp-ui"
 .\publish\dsh-plus-plus.exe --service status
 .\publish\dsh-plus-plus.exe --check-plugins web
+.\publish\dsh-plus-plus.exe --desktop status
+.\publish\dsh-plus-plus.exe --desktop sync-web
 node --test tests/runtime-host.test.mjs
 ~~~
 
-self-test 使用临时目录检查目标解析、声明保留、旧产物假成功拒绝、失败 / 取消恢复、聚合发现、来源偏差、注解 tag 和维护互斥；另外用本机回环 registry 驱动真实 npm / pnpm，验证更新后的锁文件仍可 frozen offline 安装。不修改用户 profile，不需要外网 registry。Node 集成检查验证 HTTP / WebSocket 转发、来源标记、进程替换接续、停止与超时释放。render-check 输出 8 个页面在深浅主题、1220×820 / 960×700 窗口下的 32 张真实 WPF 渲染图与按钮裁切报告，另有 4 张宽 / 窄更新确认窗口图；不执行依赖更新或模型调用。
+self-test 使用临时目录检查目标解析、声明保留、旧产物假成功拒绝、失败 / 取消恢复、聚合发现、来源偏差、注解 tag、维护互斥和桌面同步计划；另外用本机回环 registry 驱动真实 npm / pnpm，验证更新后的锁文件仍可 frozen offline 安装。不修改用户 profile，不需要外网 registry。Node 集成检查验证 HTTP / WebSocket 转发、来源标记、进程替换接续、停止与超时释放。render-check 输出 9 个页面在深浅主题、1220×820 / 960×700 窗口下的 36 张真实 WPF 渲染图与按钮裁切报告，另有 4 张宽 / 窄更新确认窗口图；不执行依赖更新或模型调用。
 
 check-plugins 是只读版本诊断，默认检查 web；结果写入状态目录的 plugin-update-check.json。任一远端检查失败或 profile 不存在时退出码为 1，发现新版或来源提示本身不视为命令失败。
 
 service 支持 start / stop / restart / status；结果写入状态目录的 service-result.txt。服务由独立 Node 宿主维持，关闭控制台可以保留后台服务；端口停止操作会先检查 DSH 进程归属。
+desktop 支持 start / stop / restart / sync-web / status；结果写入 desktop-result.txt。桌面版进程按安装目录精确匹配，不会误杀其他 Electron 应用。
 
-主要文件：RuntimeLifecycle.cs 负责服务生命周期；PluginInventory.cs、PluginLock.cs 与 PluginUpdates.cs 负责聚合发现、来源读取和目标解析；PluginMaintenance.cs 与 MaintenanceHistory.cs 负责维护、记录和恢复；CommandRunner.cs 负责取消与超时；scripts/runtime-host.mjs 负责服务登记与远程转发；MainWindow.xaml(.cs) 与 UpdatePreviewWindow.xaml(.cs) 负责界面。
+主要文件：RuntimeLifecycle.cs 负责服务生命周期；DesktopIntegration.cs 与 DesktopSynchronization.cs 负责桌面版进程和 profile 投影；PluginInventory.cs、PluginLock.cs 与 PluginUpdates.cs 负责聚合发现、来源读取和目标解析；PluginMaintenance.cs 与 MaintenanceHistory.cs 负责维护、记录和恢复；CommandRunner.cs 负责取消与超时；scripts/runtime-host.mjs 负责服务登记与远程转发；MainWindow.xaml(.cs) 与 UpdatePreviewWindow.xaml(.cs) 负责界面。
 
 Windows 发布包与变更记录见 [GitHub Releases](https://github.com/Jensen-Yao/dsh-plus-plus/releases)。
 

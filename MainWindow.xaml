@@ -20,6 +20,7 @@
                 </StackPanel>
                 <ListBox x:Name="NavList" Style="{StaticResource NavListStyle}" ItemContainerStyle="{StaticResource NavItemStyle}" SelectionChanged="NavList_SelectionChanged">
                     <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80F;" Style="{StaticResource NavGlyph}"/><TextBlock Text="服务总览"/></StackPanel></ListBoxItem>
+                    <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE735;" Style="{StaticResource NavGlyph}"/><TextBlock Text="桌面版"/></StackPanel></ListBoxItem>
                     <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74C;" Style="{StaticResource NavGlyph}"/><TextBlock Text="插件管理"/></StackPanel></ListBoxItem>
                     <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE895;" Style="{StaticResource NavGlyph}"/><TextBlock Text="版本与备份"/></StackPanel></ListBoxItem>
                     <ListBoxItem><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE774;" Style="{StaticResource NavGlyph}"/><TextBlock Text="远程连接"/></StackPanel></ListBoxItem>
@@ -53,6 +54,7 @@
                         <WrapPanel><Button x:Name="BtnStart" Content="启动服务" Style="{StaticResource BtnPrimary}" Click="BtnStart_Click" Margin="0,0,8,8"/><Button x:Name="BtnRestart" Content="重启" Style="{StaticResource BtnSecondary}" Click="BtnRestart_Click" Margin="0,0,8,8"/><Button x:Name="BtnStop" Content="停止" Style="{StaticResource BtnGhost}" Click="BtnStop_Click" Margin="0,0,8,8"/><Button x:Name="BtnOpenUi" Content="打开 DSH" Style="{StaticResource BtnGhost}" Click="BtnOpenUi_Click" Margin="0,0,0,8"/></WrapPanel>
                         <TextBlock x:Name="PcUrlText" TextWrapping="Wrap" Style="{StaticResource TbBody}" Margin="0,8,0,0" Cursor="Hand" ToolTip="复制地址" MouseLeftButtonUp="PcUrlText_Click"/>
                         <TextBlock x:Name="BindText" Style="{StaticResource TbHint}" Margin="0,6,0,0"/>
+                        <TextBlock x:Name="OverviewDesktopText" Style="{StaticResource TbHint}" Margin="0,6,0,0"/>
                         <TextBlock x:Name="OverviewPluginCheck" Style="{StaticResource TbHint}" Text="插件尚未检查" Margin="0,6,0,0"/>
                         <Border x:Name="FailurePanel" Visibility="Collapsed" BorderBrush="{DynamicResource WarningBrush}" BorderThickness="3,0,0,0" Padding="14,10" Margin="0,18,0,0" Background="{DynamicResource BgMutedBrush}"><TextBlock x:Name="FailureText" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" MaxHeight="110" TextTrimming="CharacterEllipsis"/></Border>
                     </StackPanel>
@@ -61,6 +63,35 @@
                         <Border Grid.Row="1" Background="{DynamicResource LogBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14"><TextBox x:Name="OverviewLog" Style="{StaticResource TbLog}" Text="暂无输出"/></Border>
                     </Grid>
                 </Grid>
+                <Grid x:Name="PageDesktop" Visibility="Collapsed"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="官方桌面版" Style="{StaticResource PageTitle}"/><TextBlock Text="独立桌面壳 · 共享 ~/.dsh 数据与配置" Style="{StaticResource TbSub}" Margin="0,6,0,24"/>
+                    <Grid Margin="0,0,0,22">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="状态" Style="{StaticResource TbSmall}"/><TextBlock x:Name="DesktopStateText" Text="未检查" Style="{StaticResource MetricText}" Margin="0,10,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="1" Margin="20,0,0,0"><TextBlock Text="版本" Style="{StaticResource TbSmall}"/><TextBlock x:Name="DesktopVersionText" Text="—" Style="{StaticResource MetricText}" Margin="0,10,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="2" Margin="20,0,0,0"><TextBlock Text="桌面插件" Style="{StaticResource TbSmall}"/><TextBlock x:Name="DesktopPluginText" Text="—" Style="{StaticResource MetricText}" Margin="0,10,0,0"/></StackPanel>
+                    </Grid>
+                    <WrapPanel>
+                        <Button x:Name="BtnDesktopStart" Content="启动桌面版" Style="{StaticResource BtnPrimary}" Click="BtnDesktopStart_Click" Margin="0,0,8,8"/>
+                        <Button x:Name="BtnDesktopStop" Content="停止" Style="{StaticResource BtnSecondary}" Click="BtnDesktopStop_Click" Margin="0,0,8,8"/>
+                        <Button x:Name="BtnDesktopRestart" Content="重启" Style="{StaticResource BtnGhost}" Click="BtnDesktopRestart_Click" Margin="0,0,8,8"/>
+                        <Button x:Name="BtnDesktopCheck" Content="检查桌面插件" Style="{StaticResource BtnSecondary}" Click="BtnDesktopCheck_Click" Margin="0,0,8,8"/>
+                        <Button x:Name="BtnDesktopSync" Content="从 Web 同步配置…" Style="{StaticResource BtnPrimary}" Click="BtnDesktopSync_Click" Margin="0,0,8,8"/>
+                        <Button Content="打开安装目录" Style="{StaticResource BtnGhost}" Click="BtnDesktopInstallDir_Click" Margin="0,0,8,8"/>
+                        <Button Content="打开 Profile" Style="{StaticResource BtnGhost}" Click="BtnDesktopProfileDir_Click" Margin="0,0,8,8"/>
+                        <Button Content="打开日志" Style="{StaticResource BtnGhost}" Click="BtnDesktopLogs_Click" Margin="0,0,0,8"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="DesktopHintText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,8,0,20"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,4,0,20"/>
+                    <TextBlock Text="路径" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock x:Name="DesktopPathText" Style="{StaticResource TbBody}" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                    <TextBlock x:Name="DesktopProfilePathText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    <TextBlock x:Name="DesktopDataPathText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,24,0,20"/>
+                    <TextBlock Text="与 Web 端的关系" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Style="{StaticResource TbBody}" TextWrapping="Wrap" Margin="0,12,0,0" Text="桌面版和 Web 端共享会话、凭据、技能与工作区，但使用独立的 desktop profile。桌面壳由官方安装包更新；dsh++ 只管理进程、外部插件与用户配置，不替换官方 runtime。"/>
+                    <TextBlock x:Name="DesktopCheckText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,14,0,0" Text="桌面插件尚未检查。"/>
+                </StackPanel></ScrollViewer></Grid>
                 <Grid x:Name="PagePlugins" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <StackPanel Margin="0,8,0,16"><TextBlock Text="插件管理" Style="{StaticResource PageTitle}"/><TextBlock x:Name="PluginStatText" Style="{StaticResource TbSub}" Margin="0,6,0,0"/><TextBlock x:Name="PluginCheckText" Text="尚未检查远端" Style="{StaticResource TbHint}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
