@@ -136,7 +136,13 @@ public partial class UpdateService
                 else
                 {
                     var reference = NpmReference(plugin.Name, plugin.Spec);
-                    plugin.Latest = await QueryNpmVersionAsync(reference.Name, "latest", plugin.ProfileDir, token);
+                    try { plugin.Latest = await QueryNpmVersionAsync(reference.Name, "latest", plugin.ProfileDir, token); }
+                    catch (Exception error) when (plugin.IsLocal && error is not OperationCanceledException)
+                    {
+                        plugin.Latest = "npm 未发布";
+                        plugin.Detail = $"本地链接；npm registry 无远端发布，继续由源码维护。\n{CommandRunner.Brief(error.Message)}";
+                        return;
+                    }
                     if (plugin.IsLocal)
                     {
                         plugin.Detail = IsNewer(plugin.Latest, plugin.Installed) ? "本地链接；可切换远端发布版" : "本地链接；远端无更新";
