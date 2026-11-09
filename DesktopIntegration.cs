@@ -330,11 +330,12 @@ public sealed class DesktopService
             {
                 WorkingDirectory = cfg.DshDesktopDir, UseShellExecute = true,
             });
-            var deadline = DateTime.UtcNow.AddSeconds(10);
+            var waitSeconds = Math.Max(15, cfg.StartupTimeoutSeconds);
+            var deadline = DateTime.UtcNow.AddSeconds(waitSeconds);
             var startedUtc = DateTime.UtcNow;
             while (DateTime.UtcNow < deadline)
             {
-                if (process.HasExited) return (false, "桌面版进程已退出。");
+                if (process.HasExited) return (false, $"桌面版进程已退出，退出码 {process.ExitCode}。");
                 process.Refresh();
                 if (!string.IsNullOrEmpty(process.MainWindowTitle)) break;
                 await Task.Delay(200);
@@ -342,7 +343,11 @@ public sealed class DesktopService
             process.Refresh();
             var title = process.MainWindowTitle;
             if (process.HasExited || string.IsNullOrEmpty(title) || title.Contains("unavailable", StringComparison.OrdinalIgnoreCase))
-                return (false, "桌面版启动后未进入可用界面。");
+            {
+                var status = Status();
+                var crash = status.LatestCrashLog.Length > 0 ? "，最近崩溃日志 " + Path.GetFileName(status.LatestCrashLog) : "，未产生新的 Host 崩溃日志";
+                return (false, $"桌面版启动后未进入可用界面：等待 {waitSeconds} 秒，窗口标题“{title}”，进程数 {status.ProcessCount}{crash}。可执行文件：{Executable}");
+            }
             await Task.Delay(TimeSpan.FromSeconds(2));
             var latestCrash = Status().LatestCrashLog;
             if (latestCrash.Length > 0 && File.GetLastWriteTimeUtc(latestCrash) >= startedUtc)
