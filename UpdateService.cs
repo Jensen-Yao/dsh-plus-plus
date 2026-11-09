@@ -35,6 +35,9 @@ public class PluginItem
     public bool IsGit => Spec.StartsWith("github:", StringComparison.OrdinalIgnoreCase) || Spec.StartsWith("git+", StringComparison.OrdinalIgnoreCase) || Spec.Contains("github.com");
     public bool IsCore => Name.StartsWith("@deepseek-ai/");
     public bool CanUpdate => !IsIndirect && !IsLocal && !IsCore && UpdateService.SpecUpdatable(Spec);
+    public bool CanAdvance => !IsIndirect && !IsCore && HasUpdate
+        && UpdateService.IsExactVersion((Latest ?? "").TrimStart('v', 'V'));
+    public string AdvanceTarget => IsGit ? Spec.Split('#')[0] + "#" + Latest : Latest;
     public string Policy => IsIndirect ? "随入口维护" : IsLocal ? "本地维护" : IsCore ? "跟随内核" : CanUpdate ? "跟随声明" : "固定版本";
     public string Status => !string.IsNullOrEmpty(SourceIssue) ? "来源偏差" : !string.IsNullOrEmpty(CheckError) ? "检查失败"
         : !string.IsNullOrEmpty(Detail) ? Detail : string.IsNullOrEmpty(Installed) ? "未安装" : Policy;
@@ -141,27 +144,31 @@ public partial class UpdateService
             using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases/latest");
             request.Headers.UserAgent.ParseAdd("dsh-plus-plus/" + AppVersion());
             using var response = await http.SendAsync(request, cancellation);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode) return ("", null,
+                CommandRunner.DescribeHttpStatus("读取 dsh++ 最新发布", (int)response.StatusCode, response.ReasonPhrase,
+                    response.Content.Headers.ContentLength) + $"\n地址：https://api.github.com/repos/{Repo}/releases/latest");
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
             var tag = document.RootElement.GetProperty("tag_name").GetString() ?? "";
             var assets = document.RootElement.GetProperty("assets").EnumerateArray();
             var asset = assets.FirstOrDefault(asset =>
                 asset.GetProperty("name").GetString() is string name
                 && name.EndsWith("win-x64.zip", StringComparison.OrdinalIgnoreCase));
-            if (asset.ValueKind == JsonValueKind.Undefined) return (tag, null, "没有匹配 Windows x64 的安装包。");
+            if (asset.ValueKind == JsonValueKind.Undefined) return (tag, null,
+                "dsh++ 最新发布没有匹配 win-x64.zip 的资产。可用资产：" + string.Join(", ", assets.Select(item => item.GetProperty("name").GetString() ?? "未命名")));
             return (tag, asset.GetProperty("browser_download_url").GetString(), null);
         }
-        catch (Exception exception) { return ("", null, exception.Message); }
+        catch (Exception exception) { return ("", null, "dsh++ 发布检查失败：" + exception.Message); }
     }
 
     public async Task<(bool ok, string msg)> ApplyAppUpdateAsync(string zipUrl)
     {
         if (!Uri.TryCreate(zipUrl, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "github.com"
             || !uri.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.OrdinalIgnoreCase))
-            return (false, "更新包地址无效。");
+            return (false, "dsh++ 更新包地址无效：" + (zipUrl ?? "空"));
         var executable = Environment.ProcessPath;
         var script = BundledAssets.Get("scripts/apply-update.ps1");
-        if (executable == null || !File.Exists(script)) return (false, "更新脚本不完整，请使用完整发布包。");
+        if (executable == null) return (false, "无法定位当前 dsh++ 进程，更新未开始。");
+        if (!File.Exists(script)) return (false, "更新脚本缺失，请使用完整发布包：" + script);
         var work = Path.Combine(AppConfig.ConfigDir, "app-updates", Guid.NewGuid().ToString("N"));
         try
         {
@@ -169,7 +176,9 @@ public partial class UpdateService
             var archive = Path.Combine(work, "release.zip");
             using (var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead))
             {
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode) return (false, CommandRunner.DescribeHttpStatus(
+                    "下载 dsh++ 更新包", (int)response.StatusCode, response.ReasonPhrase, response.Content.Headers.ContentLength)
+                    + "\n地址：" + uri);
                 await using var destination = File.Create(archive);
                 await response.Content.CopyToAsync(destination);
             }
@@ -177,7 +186,9 @@ public partial class UpdateService
             ZipFile.ExtractToDirectory(archive, staged);
             var required = new[] { "dsh-plus-plus.exe", "compat-polyfill.js", "scripts/runtime-host.mjs", "scripts/apply-update.ps1" };
             if (required.Any(file => !File.Exists(Path.Combine(staged, file))))
-                return (false, "更新包缺少必需文件，未替换当前版本。");
+                return (false, "dsh++ 更新包缺少必需文件，未替换当前版本。缺失："
+                    + string.Join(", ", required.Where(file => !File.Exists(Path.Combine(staged, file))))
+                    + $"\n压缩包：{archive}\n展开目录：{staged}");
             var stagedScript = Path.Combine(work, "apply-update.ps1");
             File.Copy(script, stagedScript);
             var planPath = Path.Combine(work, "plan.json");
@@ -191,7 +202,7 @@ public partial class UpdateService
             Process.Start(start);
             return (true, "更新包已验证，控制台将重启；旧版本保留在 " + work);
         }
-        catch (Exception exception) { return (false, "更新未完成：" + exception.Message); }
+        catch (Exception exception) { return (false, "dsh++ 更新未完成：" + CommandRunner.Redact(exception.Message)); }
     }
 
     public List<ProfileInfo> Profiles()

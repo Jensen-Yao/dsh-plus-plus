@@ -1,6 +1,6 @@
 # dsh++
 
-DeepSeek Harness 的 Windows 桌面控制台。3.4 增加会话记录栏、官方徽标彩虹流动、液体玻璃材质、本地健康检查与 Web / 桌面插件版本对照，修复启动脚本生命周期和桌面维护影响 Web 服务的问题。
+DeepSeek Harness 的 Windows 桌面控制台。3.5 增加插件“升级到最新”通道与官方桌面版更新管理，继续保留会话记录、玻璃材质、健康检查和 Web / 桌面插件对照。
 
 ![dsh++ 插件管理](docs/screenshots/plugins-light.png)
 ![dsh++ 桌面版管理](docs/screenshots/desktop-light.png)
@@ -27,24 +27,24 @@ DeepSeek Harness 的 Windows 桌面控制台。3.4 增加会话记录栏、官�
 
 “打开时检查控制台、内核与 web 插件”会后台检查三个目标，不安装依赖、不联网修复或阻挡服务启动。手动检查覆盖当前 profile 的全部入口和已发现子包，不受搜索或“有新版”筛选隐藏；普通刷新保留安装信息没有变化的检查结果。失败显示失败与检查时间，不把网络故障当成“已是最新”。维护开始前会取消并等待插件检查结束。
 
-npm 同时查询 latest 与声明内目标；声明范围外的新版本提示“声明限制”，需用“指定版本”明确改变范围。Git 浮动分支比较远端提交与锁定提交，固定 tag 列出更高版本 tag，注解 tag 使用剥离后的提交。只沿含 dsh.bundle 元数据的依赖展开聚合插件，不扫描所有普通 npm 工具依赖。
+npm 同时查询 latest 与声明内目标；声明范围外的新版本提示“声明限制”。选择插件后可用「升级到最新」显式切换到远端发布版，固定 Git tag 与本地链接也支持该通道。Git 浮动分支比较远端提交与锁定提交，固定 tag 列出更高版本 tag，注解 tag 使用剥离后的提交。只沿含 dsh.bundle 元数据的依赖展开聚合插件，不扫描所有普通 npm 工具依赖。
 
 | 来源 / 声明 | 默认行为 |
 | --- | --- |
 | npm 版本范围 | 显示 latest，普通更新只安装声明内精确目标 |
 | 未固定版本的 GitHub / Git | 查询远端 ref，安装精确提交后保留原分支声明 |
-| 精确版本、Git tag、commit | 保留；用“指定版本”明确修改目标 |
-| link: / file: / workspace: | 本地维护，不交给批量更新 |
+| 精确版本、Git tag、commit | 批量更新保留；可用「升级到最新」切换新 tag / 版本 |
+| link: / file: / workspace: | 批量更新保留本地来源；可用「升级到最新」切换远端发布版 |
 | @deepseek-ai/* 伴随包 | 标记“跟随内核”，不参加普通插件更新 |
 | 聚合子包 | 检查版本，由所属直接入口维护 |
 
-一次更新按以下顺序执行：确认声明与停机影响 → 在原服务运行时解析精确版本 / 提交 → 取得维护锁并检查依赖未被其他程序改动 → 保存恢复点 → 停止原服务 → 仅安装所选入口的精确目标 → 核对实际版本 / Git 提交及来源 → 保留原声明 → 配置组合检查 → 按偏好重新启动并验证网页。解析失败或目标已经就位时不停止服务；命令退出 0 却没有达到目标仍视为失败。失败或取消后恢复原清单与锁文件，再安装原依赖；原服务之前运行时尝试恢复启动。恢复依赖需要本地缓存或网络，失败时保留恢复点并报告错误。
+一次更新按以下顺序执行：确认声明与停机影响 → 在原服务运行时解析精确版本 / 提交 → 取得维护锁并检查依赖未被其他程序改动 → 保存恢复点 → 停止原服务 → 仅安装所选入口的精确目标 → 核对实际版本 / Git 提交及来源 → 保留原声明 → 配置组合检查 → 按偏好重新启动并验证网页。解析失败或目标已经就位时不停止服务；命令退出 0 却没有达到目标仍视为失败。失败报告包含阶段、目标、命令、退出码和保留首尾的关键输出；下载失败包含 HTTP 状态、地址、期望 / 实际大小和 SHA-512 期望 / 实际值；桌面更新还包含安装器退出码、runtime 目标 / 实际版本和原桌面版恢复结果。失败或取消后恢复原清单与锁文件，再安装原依赖；原服务之前运行时尝试恢复启动。恢复依赖需要本地缓存或网络，失败时保留恢复点并报告错误。
 
 pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁。安装与恢复需要可复现的解析结果，主动更新则只刷新明确选择的目标。3.2 用 YamlDotNet 解析锁文件：远端声明对应本地 file: 归档 / link:、声明不一致、格式损坏都会提示来源问题；不删除整个锁文件或自动升级全部插件。安装精确目标后，只恢复该项的原声明，保留 pnpm 生成的版本、提交、完整性哈希和共享依赖图。跨包共享依赖仍可能随所选目标变化。
 
 更新过程中可以取消，取消后的恢复阶段需等待完成。其他服务启停和依赖修改在维护期间不可并行执行。跨控制台进程的维护通过文件独占锁协调。
 
-固定 GitHub tag 不会自动跳到新 tag。运行时更新器不会自动修复所有社区插件的 API 不兼容；组合检查只验证静态配置，原服务此前未运行时不会自行拉起服务做运行验证。
+固定 GitHub tag 不会在“更新所选”中自动跳到新 tag；「升级到最新」会单独确认并切换。运行时更新器不会自动修复所有社区插件的 API 不兼容；组合检查只验证静态配置，原服务此前未运行时不会自行拉起服务做运行验证。
 
 ## 会话记录与外观
 
@@ -54,7 +54,7 @@ pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁�
 
 ## 官方桌面版
 
-「桌面版」页管理官方 Electron 桌面壳。它显示安装路径、版本、进程数、desktop profile 与桌面状态目录，支持启动、停止、重启、打开安装目录 / profile / 日志，以及对 desktop profile 的所有外部插件做只读版本检查。桌面壳仍由官方安装包更新，dsh++ 不替换其内置 runtime。
+「桌面版」页管理官方 Electron 桌面壳。它显示安装路径、应用 runtime 版本、进程数、desktop profile 与桌面状态目录，支持启动、停止、重启、打开安装目录 / profile / 日志，以及对 desktop profile 的所有外部插件做只读版本检查。官方更新读取安装包自带的 feed，显示远端版本、大小和发布时间；下载后核对大小与 SHA-512，再由官方 NSIS 安装器静默更新并复核 runtime 版本。dsh++ 不手工替换官方内置文件。
 
 「插件版本对照」列出两端的社区入口、已安装版本和声明差异，可只看差异，悬停插件名称查看两端声明。版本一致但 npm 范围不同会单独标记，不视为未安装或版本落后。
 
@@ -106,17 +106,17 @@ dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
 .\publish\dsh-plus-plus.exe --render-check "F:\temp\dshpp-ui"
 .\publish\dsh-plus-plus.exe --service status
 .\publish\dsh-plus-plus.exe --check-plugins web
-.\publish\dsh-plus-plus.exe --desktop status
+.\publish\dsh-plus-plus.exe --desktop check-update
 .\publish\dsh-plus-plus.exe --desktop sync-web
 node --test tests/runtime-host.test.mjs
 ~~~
 
-self-test 使用临时目录检查目标解析、声明保留、旧产物假成功拒绝、失败 / 取消恢复、聚合发现、来源偏差、注解 tag、维护互斥、桌面同步计划、持久预加载、桌面回滚不影响 Web，以及会话标题 / 缓存损坏 / 只读读取；另外用本机回环 registry 驱动真实 npm / pnpm，验证更新后的锁文件仍可 frozen offline 安装。不修改用户 profile，不需要外网 registry。Node 集成检查验证 HTTP / WebSocket 转发、来源标记、进程替换接续、停止与超时释放。render-check 输出 10 个页面在深浅主题、1220×820 / 920×640 窗口下的渲染图，加上筛选、空状态和维护确认窗口，共 68 张，附按钮裁切报告；另输出两帧徽标与交互报告，验证彩虹颜色变化、会话筛选和玻璃开关。公开截图中的会话均为演示数据，不截取用户真实标题；不执行依赖更新或模型调用。
+self-test 使用临时目录检查目标解析、声明保留、声明外升级、固定 tag 升级、旧产物假成功拒绝、失败 / 取消恢复、聚合发现、来源偏差、注解 tag、官方桌面 feed / ASAR 版本、维护互斥、桌面同步计划、持久预加载、桌面回滚不影响 Web，以及会话标题 / 缓存损坏 / 只读读取；另外用本机回环 registry 驱动真实 npm / pnpm，验证更新后的锁文件仍可 frozen offline 安装。不修改用户 profile，不需要外网 registry。Node 集成检查验证 HTTP / WebSocket 转发、来源标记、进程替换接续、停止与超时释放。render-check 输出 10 个页面在深浅主题、1220×820 / 920×640 窗口下的渲染图，加上筛选、空状态和维护确认窗口，共 68 张，附按钮裁切报告；另输出两帧徽标与交互报告，验证彩虹颜色变化、会话筛选和玻璃开关。公开截图中的会话均为演示数据，不截取用户真实标题；不执行依赖更新或模型调用。
 
 check-plugins 是只读版本诊断，默认检查 web；结果写入状态目录的 plugin-update-check.json。任一远端检查失败或 profile 不存在时退出码为 1，发现新版或来源提示本身不视为命令失败。
 
 service 支持 start / stop / restart / status；结果写入状态目录的 service-result.txt。服务由独立 Node 宿主维持，关闭控制台可以保留后台服务；端口停止操作会先检查 DSH 进程归属。
-desktop 支持 start / stop / restart / sync-web / status；结果写入 desktop-result.txt。桌面版进程按安装目录精确匹配，不会误杀其他 Electron 应用。
+desktop 支持 start / stop / restart / sync-web / check-update / update / status；结果写入 desktop-result.txt。桌面版进程按安装目录精确匹配，不会误杀其他 Electron 应用。
 
 主要文件：RuntimeLifecycle.cs 负责服务生命周期；DesktopIntegration.cs 与 DesktopSynchronization.cs 负责桌面版进程和 profile 投影；PluginInventory.cs、PluginLock.cs 与 PluginUpdates.cs 负责聚合发现、来源读取和目标解析；PluginMaintenance.cs 与 MaintenanceHistory.cs 负责维护、记录和恢复；CommandRunner.cs 负责取消与超时；scripts/runtime-host.mjs 负责服务登记与远程转发；MainWindow.xaml(.cs) 与 UpdatePreviewWindow.xaml(.cs) 负责界面。
 

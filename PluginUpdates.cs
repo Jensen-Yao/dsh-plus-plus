@@ -31,8 +31,8 @@ public partial class UpdateService
         var start = CommandRunner.PackageManager("npm", new[] { "view", reference.Name + "@" + reference.Spec, "version", "--json" }, directory);
         var result = await CommandRunner.RunAsync(start, TimeSpan.FromSeconds(30), cancellation: cancellation);
         if (result.Cancelled) throw new OperationCanceledException(cancellation);
-        if (!result.Ok) throw new InvalidOperationException(result.TimedOut ? "版本查询超时"
-            : string.IsNullOrWhiteSpace(result.Output) ? "npm 查询失败，退出码 " + result.ExitCode : result.Output);
+        if (!result.Ok) throw new InvalidOperationException(CommandRunner.DescribeFailure(
+            $"npm 版本查询 {reference.Name}@{reference.Spec}", $"npm view {reference.Name}@{reference.Spec} version --json", result));
         using var document = JsonDocument.Parse(result.StandardOutput);
         var values = document.RootElement.ValueKind == JsonValueKind.Array
             ? document.RootElement.EnumerateArray().Select(value => value.GetString()).ToArray()
@@ -40,7 +40,8 @@ public partial class UpdateService
         var version = "";
         foreach (var candidate in values.Where(value => value != null && IsExactVersion(value)))
             if (version.Length == 0 || IsNewer(candidate, version)) version = candidate;
-        return version.Length > 0 ? version : throw new InvalidDataException("registry 没有返回有效版本：" + name);
+        return version.Length > 0 ? version : throw new InvalidDataException(
+            $"registry 未返回有效版本：{reference.Name}@{reference.Spec}。\n返回内容：{CommandRunner.Brief(result.StandardOutput)}");
     }
 
     internal static GitPluginReference ParseGitReference(string spec)
@@ -97,8 +98,8 @@ public partial class UpdateService
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         var result = await CommandRunner.RunAsync(start, TimeSpan.FromSeconds(30), cancellation: cancellation);
         if (result.Cancelled) throw new OperationCanceledException(cancellation);
-        if (!result.Ok) throw new InvalidOperationException(result.TimedOut ? "Git 查询超时"
-            : string.IsNullOrWhiteSpace(result.Output) ? "Git 查询失败，退出码 " + result.ExitCode : result.Output);
+        if (!result.Ok) throw new InvalidOperationException(CommandRunner.DescribeFailure(
+            $"Git 引用查询 {source.Url}#{source.Ref}", $"git ls-remote {source.Url} #{source.Ref}", result));
         return ParseGitRefs(result.StandardOutput);
     }
 
@@ -113,7 +114,7 @@ public partial class UpdateService
             plugin.Latest = "未检查";
             try
             {
-                if (plugin.IsLocal || plugin.IsCore) plugin.Detail = plugin.Policy;
+                if (plugin.IsCore) plugin.Detail = plugin.Policy;
                 else if (plugin.IsGit)
                 {
                     var source = ParseGitReference(plugin.Spec);
@@ -136,6 +137,11 @@ public partial class UpdateService
                 {
                     var reference = NpmReference(plugin.Name, plugin.Spec);
                     plugin.Latest = await QueryNpmVersionAsync(reference.Name, "latest", plugin.ProfileDir, token);
+                    if (plugin.IsLocal)
+                    {
+                        plugin.Detail = IsNewer(plugin.Latest, plugin.Installed) ? "本地链接；可切换远端发布版" : "本地链接；远端无更新";
+                        return;
+                    }
                     plugin.TargetVersion = reference.Spec == "latest" ? plugin.Latest
                         : await QueryNpmVersionAsync(plugin.Name, plugin.Spec, plugin.ProfileDir, token);
                     plugin.Detail = IsNewer(plugin.TargetVersion, plugin.Installed)

@@ -37,7 +37,36 @@ public static partial class SelfCheck
         Check("prerelease numbers compare numerically", UpdateService.IsNewer("0.2.1-rc.10", "0.2.1-rc.2"));
         Check("release supersedes prerelease", UpdateService.IsNewer("0.2.1", "0.2.1-rc.10"));
         Check("build metadata does not trigger upgrade", !UpdateService.IsNewer("0.2.1+new", "0.2.1+old"));
+        var localAdvance = new PluginItem { Name = "side-chat", Spec = "link:F:/source", Installed = "0.1.0", Latest = "0.1.2" };
+        Check("local plugin can switch to a checked remote release", localAdvance.CanAdvance && localAdvance.AdvanceTarget == "0.1.2" && !localAdvance.CanUpdate);
+        var pinnedAdvance = new PluginItem { Name = "palette", Spec = "github:owner/repo#v0.1.0", Installed = "v0.1.0", Latest = "v0.1.2" };
+        Check("pinned Git tag advances to a newer tag", pinnedAdvance.CanAdvance && pinnedAdvance.AdvanceTarget == "github:owner/repo#v0.1.2");
+        var feedConfig = DesktopService.ReadDesktopUpdateConfig("provider: generic\nurl: https://download.deepseek.com/dsh-desk/feeds/win-x64/\nchannel: nightly\n");
+        Check("desktop feed URL follows the configured channel", feedConfig.Url == "https://download.deepseek.com/dsh-desk/feeds/win-x64/" && feedConfig.Channel == "nightly");
+        var feed = DesktopService.ReadDesktopUpdateFeed("version: 0.2.2-rc.1\nfiles:\n  - url: https://download.deepseek.com/dsh-desk/bin/win-x64/app.exe\n    size: 123\n    sha512: abcd\nreleaseDate: '2026-11-04T09:31:49.677Z'\n");
+        Check("desktop update feed exposes verified installer metadata", feed.Version == "0.2.2-rc.1" && feed.Size == 123 && feed.Sha512 == "abcd");
+        var asar = Path.Combine(Path.GetTempPath(), "dshpp-asar-check-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var package = Encoding.UTF8.GetBytes("{\"version\":\"0.2.1-rc.2\"}");
+            var header = Encoding.UTF8.GetBytes("{\"files\":{\"dsh\":{\"files\":{\"package.json\":{\"size\":" + package.Length + ",\"offset\":\"0\"}}}}}");
+            var prefix = new byte[16];
+            BitConverter.GetBytes(4).CopyTo(prefix, 0);
+            BitConverter.GetBytes(header.Length + 8).CopyTo(prefix, 4);
+            BitConverter.GetBytes(header.Length + 4).CopyTo(prefix, 8);
+            BitConverter.GetBytes(header.Length).CopyTo(prefix, 12);
+            File.WriteAllBytes(asar, prefix.Concat(header).Concat(package).ToArray());
+            Check("desktop version reads the bundled runtime manifest", DesktopService.ReadAsarPackageVersion(asar) == "0.2.1-rc.2");
+        }
+        finally { File.Delete(asar); }
         var cancelled = new CancellationTokenSource();
+        var commandFailure = CommandRunner.DescribeFailure("测试命令", "npm view example", new CommandResult(17, "token=secret"));
+        Check("command failures include stage, exit code, command, output, and redaction", commandFailure.Contains("测试命令失败") && commandFailure.Contains("退出码 17") && commandFailure.Contains("npm view example") && !commandFailure.Contains("secret"));
+        Check("HTTP failures include status, reason, and body length", CommandRunner.DescribeHttpStatus("测试下载", 503, "Service Unavailable", 128).Contains("HTTP 503 Service Unavailable") && CommandRunner.DescribeHttpStatus("测试下载", 503, "Service Unavailable", 128).Contains("Content-Length 128"));
+        Check("hash failures include both digests", CommandRunner.DescribeHashFailure("测试校验", "SHA-512", "aa", "bb").Contains("期望：aa") && CommandRunner.DescribeHashFailure("测试校验", "SHA-512", "aa", "bb").Contains("实际：bb"));
+        Check("size failures include expected and actual bytes", CommandRunner.DescribeSizeFailure("测试下载", 1024, 512).Contains("期望 1024 字节") && CommandRunner.DescribeSizeFailure("测试下载", 1024, 512).Contains("实际 512 字节"));
+        Check("long command output keeps beginning and end", CommandRunner.Brief(new string('a', 1000) + "END", 100).StartsWith(new string('a', 70)) && CommandRunner.Brief(new string('a', 1000) + "END", 100).EndsWith("END"));
+        Check("invalid JSON registry output is retained", CommandRunner.Brief("{\"error\":\"E404\"}").Contains("E404"));
         cancelled.Cancel();
         var cancellation = Task.Run(() => CommandRunner.RunAsync(CommandRunner.Create("node",
             new[] { "-e", "setInterval(()=>{},1000)" }, Path.GetTempPath()), TimeSpan.FromSeconds(10), cancellation: cancelled.Token)).GetAwaiter().GetResult();

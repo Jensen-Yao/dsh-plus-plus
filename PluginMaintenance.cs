@@ -112,8 +112,8 @@ public partial class UpdateService
         Action<string> progress = null, CancellationToken cancellation = default, string explicitSpec = null)
     {
         if (plugins.Count == 0) return (false, "请先选择要更新的插件。");
-        if (plugins.Any(plugin => plugin.IsIndirect || plugin.IsLocal || plugin.IsCore || (explicitSpec == null && !plugin.CanUpdate)))
-            return (false, "聚合子包须通过入口维护；固定版本请使用「指定版本」，本地链接与内核包不参与此更新。");
+        if (plugins.Any(plugin => plugin.IsIndirect || plugin.IsCore || (explicitSpec == null && (!plugin.CanUpdate || plugin.IsLocal))))
+            return (false, "聚合子包须通过入口维护；本地链接、固定版本和声明外版本请使用「升级到最新」或「指定版本」。");
         if (explicitSpec != null && (plugins.Count != 1 || !ValidSpec(explicitSpec)))
             return (false, "目标版本无效，请填写版本、范围或 github:owner/repository#ref。");
         List<PluginUpdatePlan> plans;
@@ -138,10 +138,11 @@ public partial class UpdateService
                     var plugin = plan.Plugin;
                     var beforeVersion = InstalledVersion(plugin.ProfileDir, plugin.Name);
                     Log("已解析目标：" + plugin.Name + " → " + (plan.Commit.Length > 0 ? plan.Commit : plan.Version));
-                    var result = await PackageAsync("pnpm", new[] { "add", plugin.Name + "@" + plan.InstallSpec, "--reporter=append-only" },
+                    var installArguments = new[] { "add", plugin.Name + "@" + plan.InstallSpec, "--reporter=append-only" };
+                    var result = await PackageAsync("pnpm", installArguments,
                         plugin.ProfileDir, progress, cancellation);
-                    if (!result.Ok) throw new InvalidOperationException(result.Cancelled ? "更新已取消" : result.TimedOut
-                        ? "更新超时" : "更新失败：" + CommandRunner.Redact(result.Output));
+                    if (!result.Ok) throw new InvalidOperationException(CommandRunner.DescribeFailure(
+                        $"{plugin.Name} 安装 {plan.InstallSpec}", "pnpm " + string.Join(" ", installArguments), result));
                     VerifyInstalledPlan(plan);
                     PluginLock.RestoreTrackingSpec(plugin.ProfileDir, plugin.Name, plan.IntentSpec);
                     VerifyInstalledPlan(plan);
@@ -166,15 +167,19 @@ public partial class UpdateService
         if (channel is not ("latest" or "alpha")) return (false, "无效更新通道。");
         var query = CommandRunner.PackageManager("npm", new[] { "view", "@deepseek-ai/dsh@" + channel, "version", "--json" }, cfg.DshAppDir);
         var resolved = await CommandRunner.RunAsync(query, TimeSpan.FromSeconds(45), cancellation: cancellation);
-        if (!resolved.Ok) return (false, "无法解析更新通道：" + resolved.Output);
+        if (!resolved.Ok) return (false, CommandRunner.DescribeFailure(
+            $"DSH {channel} 通道版本查询", $"npm view @deepseek-ai/dsh@{channel} version --json", resolved));
         var version = JsonSerializer.Deserialize<string>(resolved.StandardOutput);
-        if (!Regex.IsMatch(version ?? "", @"^\d+\.\d+\.\d+(?:-[\w.-]+)?$")) return (false, "更新版本无效。");
+        if (!Regex.IsMatch(version ?? "", @"^\d+\.\d+\.\d+(?:-[\w.-]+)?$"))
+            return (false, $"DSH {channel} 通道返回无效版本：{version ?? "空"}。\n返回内容：{CommandRunner.Brief(resolved.StandardOutput)}");
         return await MaintainAsync(new[] { cfg.DshAppDir }.Concat(Profiles().Where(profile => profile.Name == "web").Select(profile => profile.Dir)).ToList(), "DSH 内核 · " + channel, async () =>
         {
             var result = await PackageAsync("npm", new[] { "install", "--save-exact", "@deepseek-ai/dsh@" + version }, cfg.DshAppDir, progress, cancellation);
-            if (!result.Ok) throw new InvalidOperationException("内核更新未完成：" + result.Output);
+            if (!result.Ok) throw new InvalidOperationException(CommandRunner.DescribeFailure(
+                $"DSH 内核安装 {version}", $"npm install --save-exact @deepseek-ai/dsh@{version}", result));
             var (installed, error) = LocalDshVersion();
-            if (error != null || installed != version) throw new InvalidOperationException("安装版本与目标版本不一致。");
+            if (error != null || installed != version) throw new InvalidOperationException(
+                $"DSH 内核目标核对失败：目标 {version}，实际 {installed}，清单错误：{error ?? "无"}。");
             await SynchronizeCompanionPackagesAsync(progress, cancellation);
         }, progress, cancellation);
     }
@@ -194,7 +199,8 @@ public partial class UpdateService
         }
         if (targets.Count == 0) { progress?.Invoke("官方伴随包已与当前内核一致。"); return; }
         var result = await PackageAsync("pnpm", new[] { "add", "--save-exact" }.Concat(targets), profile.Dir, progress, cancellation);
-        if (!result.Ok) throw new InvalidOperationException("官方伴随包同步失败：" + result.Output);
+        if (!result.Ok) throw new InvalidOperationException(CommandRunner.DescribeFailure(
+            "官方伴随包同步 " + string.Join(", ", targets), "pnpm add --save-exact " + string.Join(" ", targets), result));
     }
 
     public Task<(bool ok, string msg)> SynchronizeCompanionsAsync(Action<string> progress = null, CancellationToken cancellation = default)

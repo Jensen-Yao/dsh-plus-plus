@@ -64,8 +64,12 @@ public partial class App : Application
                 "stop" => await desktop.StopAsync(),
                 "restart" => await desktop.RestartAsync(),
                 "sync-web" => await updates.SynchronizeDesktopFromWebAsync(),
-                "status" => (desktop.Installed, desktop.Status().State),
-                _ => (false, "Usage: --desktop start|stop|restart|sync-web|status"),
+                "check-update" => await desktop.CheckUpdateAsync() is { } checkedUpdate
+                    ? (checkedUpdate.Installed, checkedUpdate.Error.Length > 0 ? checkedUpdate.Error : checkedUpdate.UpdateAvailable ? checkedUpdate.CurrentVersion + " -> " + checkedUpdate.Latest.Version : checkedUpdate.CurrentVersion)
+                    : (false, "未检查"),
+                "update" => await desktop.UpdateAsync((await desktop.CheckUpdateAsync()).Latest),
+                "status" => desktop.Status() is { } desktopStatus ? (desktopStatus.Installed, desktopStatus.Version + " · " + desktopStatus.State) : (false, "未检查"),
+                _ => (false, "Usage: --desktop start|stop|restart|sync-web|check-update|update|status"),
             }).GetAwaiter().GetResult();
             System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
             System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "desktop-result.txt"), result.Item2);

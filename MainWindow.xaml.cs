@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     bool selfUpdating;
     bool freebuffReveal;
     string appUpdateZip;
+    DesktopUpdateStatus desktopUpdate;
     string stableVersion;
     string alphaVersion;
     string activeBind;
@@ -90,6 +91,7 @@ public partial class MainWindow : Window
             await RefreshAsync();
             _ = RefreshHealthAsync();
             _ = RefreshSessionsAsync();
+            if (cfg.CheckUpdatesOnLaunch) _ = CheckDesktopUpdateAsync();
             var controlsReady = BtnStart.IsEnabled || BtnRestart.IsEnabled;
             if (cfg.CheckUpdatesOnLaunch)
             {
@@ -423,8 +425,11 @@ public partial class MainWindow : Window
             PluginDetailText.Text = plugin.IsIndirect ? "更新入口：" + plugin.OwnerName + " · " + plugin.Spec : plugin.Spec;
             PluginDetailText.ToolTip = CommandRunner.Redact(plugin.Description);
             PluginHintText.Text = plugin.SourceIssue.Length > 0 ? plugin.SourceIssue : plugin.CheckError.Length > 0 ? "检查失败，悬停查看详情。"
-                : plugin.IsIndirect ? "由所属入口安装，不单独提升为直接依赖。" : "本地链接由源码维护；固定版本可通过「指定版本」更改。";
+                : plugin.IsIndirect ? "由所属入口安装，不单独提升为直接依赖。"
+                : plugin.CanAdvance ? $"远端最新 {plugin.AdvanceTarget}；「升级到最新」会显式切换声明并保留回滚点。"
+                : "本地链接、固定版本和声明外版本可通过「升级到最新」或「指定版本」更改。";
             BtnPluginTarget.IsEnabled = !busy && !plugin.IsIndirect && !plugin.IsLocal && !plugin.IsCore;
+            BtnPluginLatest.IsEnabled = !busy && plugin.CanAdvance;
         }
         else BtnPluginTarget.IsEnabled = false;
     }
@@ -507,6 +512,19 @@ public partial class MainWindow : Window
         if (!UpdateService.ValidSpec(target)) { PluginHintText.Text = "目标版本无效；不接受本地路径或命令。"; return; }
         if (!ConfirmMaintenance("指定插件版本", new[] { new PlannedChange(plugin.Name, $"{plugin.Installed} → {target}") }, new[] { plugin.Profile })) return;
         await RunTaskAsync("更新 " + plugin.Name, async cancellation =>
+            await Task.Run(() => upd.UpdatePluginsAsync(new[] { plugin }, Progress, cancellation, target)));
+    }
+
+    async void BtnPluginLatest_Click(object sender, RoutedEventArgs e)
+    {
+        if (PluginGrid.SelectedItem is not PluginItem plugin || !plugin.CanAdvance) return;
+        var target = plugin.AdvanceTarget;
+        if (!ConfirmMaintenance("升级插件到远端最新", new[]
+        {
+            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"{plugin.Installed} · {plugin.Spec} → {target}"),
+            new PlannedChange("维护方式", plugin.IsLocal ? "本地链接切换为远端发布版" : "保留原来源，显式采用远端目标"),
+        }, new[] { plugin.Profile })) return;
+        await RunTaskAsync("升级 " + plugin.Name, async cancellation =>
             await Task.Run(() => upd.UpdatePluginsAsync(new[] { plugin }, Progress, cancellation, target)));
     }
 
@@ -762,6 +780,8 @@ public partial class MainWindow : Window
         BtnDesktopRestart.IsEnabled = enabled && desktopInstalled && desktopRunning;
         BtnDesktopSync.IsEnabled = enabled && desktopInstalled && !upd.Busy;
         BtnDesktopCheck.IsEnabled = enabled && pluginCheckTask is not { IsCompleted: false };
+        BtnDesktopUpdateCheck.IsEnabled = enabled && desktopInstalled;
+        BtnDesktopUpdateInstall.IsEnabled = enabled && desktopInstalled && desktopUpdate?.UpdateAvailable == true;
     }
 
     async void BtnDesktopStart_Click(object sender, RoutedEventArgs e)
@@ -786,6 +806,43 @@ public partial class MainWindow : Window
         var summary = await CheckPluginsInUiAsync(scope);
         if (summary != null)
             DesktopCheckText.Text = $"{DateTime.Now:HH:mm} 桌面插件检查完成 · {summary.Updates} 有更新 · {summary.Failed} 失败 · {summary.SourceIssues} 来源提示";
+    }
+
+    async Task CheckDesktopUpdateAsync()
+    {
+        if (BtnDesktopUpdateCheck == null) return;
+        BtnDesktopUpdateCheck.IsEnabled = false;
+        DesktopUpdateText.Text = "正在检查官方桌面版更新…";
+        try
+        {
+            desktopUpdate = await Task.Run(() => desktop.CheckUpdateAsync());
+            DesktopUpdateText.Text = desktopUpdate.Error?.Length > 0 ? "官方更新检查失败：" + desktopUpdate.Error
+                : desktopUpdate.UpdateAvailable
+                    ? $"官方桌面版 {desktopUpdate.CurrentVersion} → {desktopUpdate.Latest.Version} · {desktopUpdate.Latest.Size / 1024 / 1024} MB · 发布于 {desktopUpdate.Latest.ReleaseDate.ToLocalTime():yyyy-MM-dd HH:mm}"
+                    : "官方桌面版已是最新（" + desktopUpdate.CurrentVersion + "）。";
+        }
+        finally
+        {
+            BtnDesktopUpdateCheck.IsEnabled = !busy && desktopInstalled;
+            RefreshDesktopControls(!busy);
+        }
+    }
+
+    async void BtnDesktopUpdateCheck_Click(object sender, RoutedEventArgs e) => await CheckDesktopUpdateAsync();
+
+    async void BtnDesktopUpdateInstall_Click(object sender, RoutedEventArgs e)
+    {
+        if (!desktopUpdate.UpdateAvailable) return;
+        var update = desktopUpdate.Latest;
+        if (!ConfirmMaintenance("更新官方桌面版", new[]
+        {
+            new PlannedChange("官方桌面版", $"{desktopUpdate.CurrentVersion} → {update.Version}"),
+            new PlannedChange("安装包", $"{update.Size / 1024 / 1024} MB · SHA-512 校验 · NSIS 静默安装"),
+            new PlannedChange("服务影响", "安装前停止桌面版；桌面 profile 依赖不会被修改。"),
+        }, new[] { "desktop" })) return;
+        await RunTaskAsync("更新官方桌面版", async cancellation =>
+            await desktop.UpdateAsync(update, Progress, cancellation));
+        _ = CheckDesktopUpdateAsync();
     }
 
     async void BtnDesktopSync_Click(object sender, RoutedEventArgs e)

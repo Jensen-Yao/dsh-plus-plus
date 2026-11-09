@@ -12,6 +12,34 @@ public record CommandResult(int ExitCode, string Output, bool TimedOut = false, 
 
 public static class CommandRunner
 {
+    /// <summary>Keeps the beginning and end of long command output so failures retain their cause.</summary>
+    public static string Brief(string text, int limit = 1600)
+    {
+        var value = (text ?? "").Replace("\r\n", "\n").Trim();
+        if (value.Length <= limit) return value;
+        var tail = Math.Clamp(limit / 5, 20, Math.Max(20, limit / 2));
+        var head = limit - tail;
+        return value[..head] + "\n…输出已截断…\n" + value[^tail..];
+    }
+
+    public static string DescribeFailure(string stage, string command, CommandResult result)
+    {
+        var state = result.TimedOut ? "命令超时" : result.Cancelled ? "命令已取消" : "命令退出码 " + result.ExitCode;
+        return $"{stage}失败：{state}。\n命令：{command}\n{Redact(Brief(result.Output))}";
+    }
+
+    public static string DescribeHttpStatus(string stage, int statusCode, string reason, long? contentLength)
+    {
+        var length = contentLength.HasValue ? "，Content-Length " + contentLength.Value : "，响应未声明 Content-Length";
+        return $"{stage}失败：HTTP {statusCode} {reason ?? "无状态说明"}{length}。";
+    }
+
+    public static string DescribeHashFailure(string stage, string algorithm, string expected, string actual)
+        => $"{stage}失败：{algorithm} 校验不一致。\n期望：{expected}\n实际：{actual}";
+
+    public static string DescribeSizeFailure(string stage, long expected, long actual)
+        => $"{stage}失败：下载大小不一致。期望 {expected} 字节（{(expected / 1024.0 / 1024).ToString("0.00")} MB），实际 {actual} 字节（{(actual / 1024.0 / 1024).ToString("0.00")} MB）。";
+
     public static string Redact(string text) => Regex.Replace(text ?? "",
         @"(?i)((?:[\w.-]*token|[\w.-]*api[_-]?key|authorization|password|secret)[\""']?\s*[:=]\s*)(?:\""[^\""\r\n]*\""|'[^'\r\n]*'|(?:Bearer|Basic)\s+[^\s,}]+|[^\s\""',&}]+)", "$1[hidden]");
 

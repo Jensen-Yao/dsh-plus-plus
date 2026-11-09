@@ -87,9 +87,12 @@
                         <Button x:Name="BtnDesktopStop" Content="停止" Style="{StaticResource BtnSecondary}" Click="BtnDesktopStop_Click" Margin="0,0,8,8"/>
                         <Button x:Name="BtnDesktopRestart" Content="重启" Style="{StaticResource BtnGhost}" Click="BtnDesktopRestart_Click" Margin="0,0,8,8"/>
                         <Button x:Name="BtnDesktopCheck" Content="检查桌面插件" Style="{StaticResource BtnSecondary}" Click="BtnDesktopCheck_Click" Margin="0,0,8,8"/>
+                        <Button x:Name="BtnDesktopUpdateCheck" Content="检查官方更新" Style="{StaticResource BtnSecondary}" Click="BtnDesktopUpdateCheck_Click" Margin="0,0,8,8"/>
+                        <Button x:Name="BtnDesktopUpdateInstall" Content="更新桌面版" Style="{StaticResource BtnSecondary}" IsEnabled="False" Click="BtnDesktopUpdateInstall_Click" Margin="0,0,8,8"/>
                         <Button x:Name="BtnDesktopSync" Content="从 Web 同步配置…" Style="{StaticResource BtnPrimary}" Click="BtnDesktopSync_Click" Margin="0,0,8,8"/>
                     </WrapPanel>
                     <TextBlock x:Name="DesktopHintText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,8,0,20"/>
+                    <TextBlock x:Name="DesktopUpdateText" Style="{StaticResource TbHint}" TextWrapping="Wrap" Margin="0,0,0,18" Text="官方桌面版更新尚未检查。"/>
                     <DockPanel Margin="0,0,0,12">
                         <CheckBox x:Name="ComparisonOnlyChanges" Content="只看差异" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondaryBrush}" Checked="ComparisonFilter_Changed" Unchecked="ComparisonFilter_Changed" VerticalAlignment="Center"/>
                         <TextBlock Text="插件版本对照" Style="{StaticResource SectionTitle}"/>
@@ -142,7 +145,7 @@
                     <TextBlock x:Name="PluginEmptyText" Grid.Row="2" Text="没有符合筛选条件的插件" Style="{StaticResource TbHint}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"/>
                     <StackPanel Grid.Row="3" Margin="0,14,0,0">
                         <TextBlock x:Name="PluginDetailText" Style="{StaticResource TbHint}" TextTrimming="CharacterEllipsis" MaxHeight="40" Text="选择插件查看依赖声明"/>
-                        <WrapPanel Margin="0,12,0,0"><Button x:Name="BtnPluginUpdate" Content="更新所选" Style="{StaticResource BtnPrimary}" Click="BtnPluginUpdate_Click" Margin="0,0,8,8"/><Button x:Name="BtnPluginTarget" Content="指定版本…" Style="{StaticResource BtnGhost}" Click="BtnPluginTarget_Click" Margin="0,0,8,8"/><Button Content="在 DSH 中管理 ↗" Style="{StaticResource BtnGhost}" Click="BtnOpenUi_Click" Margin="0,0,8,8"/><Button ToolTip="导出当前插件清单" AutomationProperties.Name="导出当前插件清单" Style="{StaticResource IconButtonStyle}" Click="BtnExportPlugins_Click"><TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets"/></Button></WrapPanel>
+                        <WrapPanel Margin="0,12,0,0"><Button x:Name="BtnPluginUpdate" Content="更新所选" Style="{StaticResource BtnPrimary}" Click="BtnPluginUpdate_Click" Margin="0,0,8,8"/><Button x:Name="BtnPluginLatest" Content="升级到最新" Style="{StaticResource BtnSecondary}" IsEnabled="False" Click="BtnPluginLatest_Click" Margin="0,0,8,8"/><Button x:Name="BtnPluginTarget" Content="指定版本…" Style="{StaticResource BtnGhost}" Click="BtnPluginTarget_Click" Margin="0,0,8,8"/><Button Content="在 DSH 中管理 ↗" Style="{StaticResource BtnGhost}" Click="BtnOpenUi_Click" Margin="0,0,8,8"/><Button ToolTip="导出当前插件清单" AutomationProperties.Name="导出当前插件清单" Style="{StaticResource IconButtonStyle}" Click="BtnExportPlugins_Click"><TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets"/></Button></WrapPanel>
                         <TextBlock x:Name="PluginHintText" Style="{StaticResource TbHint}" Text="本地链接由源码维护；固定版本可通过「指定版本」更改。"/>
                     </StackPanel>
                 </Grid>
