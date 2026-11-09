@@ -26,6 +26,7 @@ public class PluginItem
     public string TargetVersion { get; set; } = "";
     public string TargetCommit { get; set; } = "";
     public string CheckError { get; set; } = "";
+    public bool RemoteIdentityVerified { get; set; }
     public DateTime? CheckedAt { get; set; }
     public bool IsIndirect => !string.IsNullOrEmpty(OwnerName);
     public bool HasUpdate => UpdateService.IsNewer(Latest, Installed)
@@ -35,7 +36,7 @@ public class PluginItem
     public bool IsGit => Spec.StartsWith("github:", StringComparison.OrdinalIgnoreCase) || Spec.StartsWith("git+", StringComparison.OrdinalIgnoreCase) || Spec.Contains("github.com");
     public bool IsCore => Name.StartsWith("@deepseek-ai/");
     public bool CanUpdate => !IsIndirect && !IsLocal && !IsCore && UpdateService.SpecUpdatable(Spec);
-    public bool CanAdvance => !IsIndirect && !IsCore && HasUpdate
+    public bool CanAdvance => !IsIndirect && !IsCore && HasUpdate && (!IsLocal || RemoteIdentityVerified)
         && UpdateService.IsExactVersion((Latest ?? "").TrimStart('v', 'V'));
     public string AdvanceTarget => IsGit ? Spec.Split('#')[0] + "#" + Latest : Latest;
     public string Policy => IsIndirect ? "随入口维护" : IsLocal ? "本地维护" : IsCore ? "跟随内核" : CanUpdate ? "跟随声明" : "固定版本";
@@ -53,6 +54,7 @@ public class PluginItem
         TargetCommit = previous.TargetCommit;
         CheckedAt = previous.CheckedAt;
         CheckError = previous.CheckError;
+        RemoteIdentityVerified = previous.RemoteIdentityVerified;
     }
 }
 

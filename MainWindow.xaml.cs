@@ -401,7 +401,7 @@ public partial class MainWindow : Window
             && MatchesPluginStatus(plugin, PluginStatusFilter.SelectedIndex)).ToList();
         PluginGrid.ItemsSource = visible;
         PluginEmptyText.Visibility = visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        PluginStatText.Text = $"{visible.Count} 项 · {visible.Count(plugin => plugin.IsIndirect)} 子包 · {visible.Count(plugin => plugin.HasUpdate)} 有更新 · {visible.Count(plugin => plugin.SourceIssue.Length > 0)} 来源提示";
+        PluginStatText.Text = $"{visible.Count} 项 · {visible.Count(plugin => plugin.IsIndirect)} 子包 · {visible.Count(plugin => plugin.HasUpdate && (plugin.CanUpdate || plugin.CanAdvance || plugin.IsIndirect))} 有更新 · {visible.Count(plugin => plugin.SourceIssue.Length > 0)} 来源提示";
         UpdateSelectedCount();
     }
 

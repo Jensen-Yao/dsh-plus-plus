@@ -38,7 +38,10 @@ public static partial class SelfCheck
         Check("release supersedes prerelease", UpdateService.IsNewer("0.2.1", "0.2.1-rc.10"));
         Check("build metadata does not trigger upgrade", !UpdateService.IsNewer("0.2.1+new", "0.2.1+old"));
         var localAdvance = new PluginItem { Name = "side-chat", Spec = "link:F:/source", Installed = "0.1.0", Latest = "0.1.2" };
-        Check("local plugin can switch to a checked remote release", localAdvance.CanAdvance && localAdvance.AdvanceTarget == "0.1.2" && !localAdvance.CanUpdate);
+        localAdvance.RemoteIdentityVerified = true;
+        Check("verified local plugin can switch to a checked remote release", localAdvance.CanAdvance && localAdvance.AdvanceTarget == "0.1.2" && !localAdvance.CanUpdate);
+        var impersonatedLocal = new PluginItem { Name = "same-name", Spec = "link:F:/source", Installed = "0.1.0", Latest = "9.0.0" };
+        Check("unverified npm same-name package cannot replace a local plugin", !impersonatedLocal.CanAdvance);
         var pinnedAdvance = new PluginItem { Name = "palette", Spec = "github:owner/repo#v0.1.0", Installed = "v0.1.0", Latest = "v0.1.2" };
         Check("pinned Git tag advances to a newer tag", pinnedAdvance.CanAdvance && pinnedAdvance.AdvanceTarget == "github:owner/repo#v0.1.2");
         var feedConfig = DesktopService.ReadDesktopUpdateConfig("provider: generic\nurl: https://download.deepseek.com/dsh-desk/feeds/win-x64/\nchannel: nightly\n");

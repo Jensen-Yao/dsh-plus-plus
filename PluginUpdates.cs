@@ -103,6 +103,56 @@ public partial class UpdateService
         return ParseGitRefs(result.StandardOutput);
     }
 
+    static string RepositoryUrl(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.String) return value.GetString() ?? "";
+        if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("url", out var url)) return url.GetString() ?? "";
+        return "";
+    }
+
+    static string NormalizeRepository(string value)
+    {
+        var url = (value ?? "").Trim().ToLowerInvariant();
+        if (url.StartsWith("git+")) url = url[4..];
+        if (url.StartsWith("github:")) url = "https://github.com/" + url[7..];
+        url = url.TrimEnd('/').EndsWith(".git") ? url[..^4] : url.TrimEnd('/');
+        return url;
+    }
+
+    async Task<(bool ok, string detail)> VerifyRemoteIdentityAsync(PluginItem plugin, CancellationToken cancellation)
+    {
+        var manifestPath = Path.Combine(plugin.PackageDirectory, "package.json");
+        if (!File.Exists(manifestPath)) return (false, "本地 package.json 不存在：" + manifestPath);
+        string localRepository;
+        try
+        {
+            using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            localRepository = manifest.RootElement.TryGetProperty("repository", out var repository) ? RepositoryUrl(repository) : "";
+        }
+        catch (Exception error) when (error is IOException or JsonException)
+        {
+            return (false, "本地 package.json 无法读取：" + error.Message);
+        }
+        if (string.IsNullOrWhiteSpace(localRepository)) return (false, "本地包未声明 repository。");
+        var reference = NpmReference(plugin.Name, plugin.Spec);
+        var start = CommandRunner.PackageManager("npm", new[] { "view", reference.Name, "repository", "--json" }, plugin.ProfileDir);
+        var result = await CommandRunner.RunAsync(start, TimeSpan.FromSeconds(30), cancellation: cancellation);
+        if (result.Cancelled) throw new OperationCanceledException(cancellation);
+        if (!result.Ok) return (false, CommandRunner.DescribeFailure(
+            $"npm 同名包身份查询 {reference.Name}", $"npm view {reference.Name} repository --json", result));
+        string remoteRepository;
+        try
+        {
+            using var document = JsonDocument.Parse(result.StandardOutput);
+            remoteRepository = document.RootElement.ValueKind == JsonValueKind.Object
+                ? RepositoryUrl(document.RootElement) : RepositoryUrl(document.RootElement);
+        }
+        catch (JsonException error) { return (false, "npm 身份返回无效 JSON：" + error.Message + "\n" + CommandRunner.Brief(result.StandardOutput)); }
+        var matches = NormalizeRepository(localRepository).Equals(NormalizeRepository(remoteRepository), StringComparison.OrdinalIgnoreCase);
+        return (matches, "本地 repository：" + localRepository + "\nnpm repository：" + (remoteRepository.Length > 0 ? remoteRepository : "未声明"));
+    }
+
+
     public async Task<PluginCheckSummary> CheckPluginsAsync(IReadOnlyList<PluginItem> plugins,
         CancellationToken cancellation = default, Action<string> progress = null)
     {
@@ -145,7 +195,11 @@ public partial class UpdateService
                     }
                     if (plugin.IsLocal)
                     {
-                        plugin.Detail = IsNewer(plugin.Latest, plugin.Installed) ? "本地链接；可切换远端发布版" : "本地链接；远端无更新";
+                        var identity = await VerifyRemoteIdentityAsync(plugin, token);
+                        plugin.RemoteIdentityVerified = identity.ok;
+                        plugin.Detail = identity.ok
+                            ? IsNewer(plugin.Latest, plugin.Installed) ? "本地链接；远端身份一致，可切换发布版" : "本地链接；远端无更新"
+                            : "本地链接；npm 同名包身份不一致，保留本地版本。\n" + identity.detail;
                         return;
                     }
                     plugin.TargetVersion = reference.Spec == "latest" ? plugin.Latest
@@ -169,7 +223,8 @@ public partial class UpdateService
                 progress?.Invoke($"检查 {Interlocked.Increment(ref completed)}/{plugins.Count} · {plugin.Name}");
             }
         });
-        return new(plugins.Count, plugins.Count(plugin => plugin.CheckError.Length > 0), plugins.Count(plugin => plugin.HasUpdate), plugins.Count(plugin => plugin.SourceIssue.Length > 0));
+        return new(plugins.Count, plugins.Count(plugin => plugin.CheckError.Length > 0),
+            plugins.Count(plugin => plugin.HasUpdate && (plugin.CanUpdate || plugin.CanAdvance || plugin.IsIndirect)), plugins.Count(plugin => plugin.SourceIssue.Length > 0));
     }
 
     async Task<PluginUpdatePlan> ResolvePlanAsync(PluginItem plugin, string intent, CancellationToken cancellation)
