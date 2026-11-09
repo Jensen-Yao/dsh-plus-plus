@@ -31,7 +31,7 @@ public static class Diagnostics
         {
             try
             {
-                var start = CommandRunner.PackageManager(manager, new[] { "--version" }, cfg.DshAppDir);
+                var start = CommandRunner.PackageManager(manager, new[] { "--version" }, AppConfig.ConfigDir);
                 var result = await CommandRunner.RunAsync(start, TimeSpan.FromSeconds(10));
                 report.AppendLine(manager + ": " + result.Output);
             }

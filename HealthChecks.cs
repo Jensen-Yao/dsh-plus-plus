@@ -55,7 +55,7 @@ public static class HealthChecks
             try
             {
                 var result = await CommandRunner.RunAsync(CommandRunner.PackageManager(manager, new[] { "--version" },
-                    Directory.Exists(cfg.DshAppDir) ? cfg.DshAppDir : AppConfig.ConfigDir), TimeSpan.FromSeconds(8), cancellation: cancellation);
+                    AppConfig.ConfigDir), TimeSpan.FromSeconds(8), cancellation: cancellation);
                 cancellation.ThrowIfCancellationRequested();
                 Add(result.Ok ? "通过" : "错误", "环境", manager, result.Ok ? result.StandardOutput : ExplainManagerFailure(result));
             }
