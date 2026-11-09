@@ -170,30 +170,39 @@ public sealed class DesktopService
         CommandResult installerResult = null;
         try
         {
-            stage = "下载官方安装包";
-            progress?.Invoke($"正在下载官方桌面版 {update.Version} · {update.Size / 1024 / 1024} MB…");
-            using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellation);
-            if (!response.IsSuccessStatusCode) throw new InvalidOperationException(
-                CommandRunner.DescribeHttpStatus(stage, (int)response.StatusCode, response.ReasonPhrase,
-                    response.Content.Headers.ContentLength) + "\n地址：" + uri);
-            var declaredLength = response.Content.Headers.ContentLength;
-            if (declaredLength.HasValue && declaredLength.Value != update.Size)
-                throw new InvalidOperationException($"官方 feed 与下载响应大小不一致：feed {update.Size} 字节，HTTP {declaredLength.Value} 字节。\n地址：{uri}");
-            await using var source = await response.Content.ReadAsStreamAsync(cancellation);
-            await using var destination = File.Create(installer);
-            var buffer = new byte[1024 * 1024];
-            int read;
-            while ((read = await source.ReadAsync(buffer, cancellation)) > 0)
+            if (File.Exists(installer) && new FileInfo(installer).Length == update.Size)
             {
-                await destination.WriteAsync(buffer.AsMemory(0, read), cancellation);
-                copied += read;
-                if (copied % (16 * 1024 * 1024) < buffer.Length)
-                    progress?.Invoke($"下载中 {copied / 1024 / 1024} MB / {update.Size / 1024 / 1024} MB");
+                copied = update.Size;
+                progress?.Invoke($"发现已完整下载的官方安装包：{installer}");
             }
-            await destination.FlushAsync(cancellation);
-            if (copied != update.Size) throw new InvalidOperationException(
-                CommandRunner.DescribeSizeFailure(stage, update.Size, copied) + $"\n地址：{uri}\n文件：{installer}");
-
+            else
+            {
+                stage = "下载官方安装包";
+                progress?.Invoke($"正在下载官方桌面版 {update.Version} · {update.Size / 1024 / 1024} MB…");
+                using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellation);
+                if (!response.IsSuccessStatusCode) throw new InvalidOperationException(
+                    CommandRunner.DescribeHttpStatus(stage, (int)response.StatusCode, response.ReasonPhrase,
+                        response.Content.Headers.ContentLength) + "\n地址：" + uri);
+                var declaredLength = response.Content.Headers.ContentLength;
+                if (declaredLength.HasValue && declaredLength.Value != update.Size)
+                    throw new InvalidOperationException($"官方 feed 与下载响应大小不一致：feed {update.Size} 字节，HTTP {declaredLength.Value} 字节。\n地址：{uri}");
+                await using (var source = await response.Content.ReadAsStreamAsync(cancellation))
+                await using (var destination = File.Create(installer))
+                {
+                    var buffer = new byte[1024 * 1024];
+                    int read;
+                    while ((read = await source.ReadAsync(buffer, cancellation)) > 0)
+                    {
+                        await destination.WriteAsync(buffer.AsMemory(0, read), cancellation);
+                        copied += read;
+                        if (copied % (16 * 1024 * 1024) < buffer.Length)
+                            progress?.Invoke($"下载中 {copied / 1024 / 1024} MB / {update.Size / 1024 / 1024} MB");
+                    }
+                    await destination.FlushAsync(cancellation);
+                }
+                if (copied != update.Size) throw new InvalidOperationException(
+                    CommandRunner.DescribeSizeFailure(stage, update.Size, copied) + $"\n地址：{uri}\n文件：{installer}");
+            }
             stage = "校验官方安装包";
             progress?.Invoke("下载完成，正在核对 SHA-512…");
             string expected;
