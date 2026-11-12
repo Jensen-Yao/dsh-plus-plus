@@ -6,13 +6,14 @@
 
 - 项目：`F:\dh talk\dsh-plus-plus`
 - Git 分支：`main`
-- Git HEAD：见 git log（3.7.1 overlay patch 检查与修复已提交）
+- Git HEAD：`49b03a7 Refresh screenshots for 3.7.1 and restyle the README header`（已推送）
 - 工作区：干净
 - 当前代码版本：`3.7.1`
 - GitHub：`https://github.com/Jensen-Yao/dsh-plus-plus`
-- 最新 Release：`v3.5.5`（3.6.0 / 3.7.0 尚未推送 / 发布）
+- 最新 Release：`v3.7.1`（2026-11-13 发布，资产 dsh-plus-plus-v3.7.1-win-x64.zip）
 - 固定安装入口：`F:\SelfSoftware\dsh++\dsh-plus-plus.exe`
-- 当前运行版本：`3.7.1.0`（旧版备份：`backups\dsh-plus-plus-3.5.5.exe` ~ `3.7.0.exe`）
+- 当前运行版本：`3.7.1.0`（= GitHub Release 同一构建；旧版备份：`backups\dsh-plus-plus-3.5.5.exe` ~ `3.7.0.exe`）
+- README 已改为居中头部 + Claude 风格 badge 顶栏（terracotta/橄榄绿），docs/screenshots 全部换为 3.7.1 界面渲染图（原软件主题不变——Claude 风格只用于 GitHub 页面，软件本体仍是原 Apple 风双主题）
 
 ## dsh++ 已完成能力
 
