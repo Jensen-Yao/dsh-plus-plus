@@ -83,10 +83,33 @@
   .cap {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 16px; padding: 24px 26px;
+    transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
   }
-  .cap .ico { font-size: 22px; line-height: 1; }
+  .cap:hover {
+    transform: translateY(-3px); border-color: #D9B49E;
+    box-shadow: 0 10px 26px rgba(61, 57, 41, .10);
+  }
+  .cap .ico { font-size: 22px; line-height: 1; display: inline-block; transition: transform .22s ease; }
+  .cap:hover .ico { transform: scale(1.15); }
   .cap h3 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; }
   .cap p { font-size: 14.5px; color: var(--text2); line-height: 1.7; }
+
+  /* motion */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  .hero img.logo { animation: float 6s ease-in-out infinite; }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  .banner img { transition: transform .5s ease, box-shadow .5s ease; }
+  .banner:hover img { transform: translateY(-3px); }
+  .strip figure { transition: transform .25s ease, box-shadow .25s ease; }
+  .strip figure:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(61, 57, 41, .12); }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .hero img.logo { animation: none; }
+    .cap, .cap .ico, .banner img, .strip figure { transition: none; }
+    .cap:hover, .banner:hover img, .strip figure:hover { transform: none; }
+    html { scroll-behavior: auto; }
+  }
   @media (max-width: 720px) { .caps { grid-template-columns: 1fr; } .hero h1 { font-size: 36px; } }
   @media (max-width: 520px) {
     nav .links a:not(.dl) { display: none; }
@@ -258,6 +281,23 @@ dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
     <a href="https://github.com/Jensen-Yao/dsh-plus-plus#readme">完整文档</a>
   </div>
 </footer>
+
+<script>
+  (function () {
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) return;
+    var targets = document.querySelectorAll('.cap, .step, .strip figure, .banner, .faq details');
+    targets.forEach(function (el) { el.classList.add('reveal'); });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) { entry.target.classList.add('in'); io.unobserve(entry.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    targets.forEach(function (el) { io.observe(el); });
+    // 兜底：任何原因未触发的入场在 1.5s 后强制完成，内容绝不滞留在透明态
+    setTimeout(function () { targets.forEach(function (el) { el.classList.add('in'); }); }, 1500);
+  })();
+</script>
 
 </body>
 </html>
