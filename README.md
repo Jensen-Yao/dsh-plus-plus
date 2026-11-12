@@ -1,123 +1,140 @@
 <div align="center">
 
+<img src="docs/logo-rainbow.png" width="128" alt="dsh++ 徽标"/>
+
 # dsh++
 
-**DeepSeek Harness 的 Windows 桌面控制台**
+**给 DeepSeek Harness 配的 Windows 桌面遥控器**
 
-服务生命周期 · 插件维护 · 官方桌面版管理 · 健康诊断
+不用记命令行——启动、更新、排查，都在一个窗口里。
 
 [![Release](https://img.shields.io/badge/release-v3.7.1-D97757?style=flat-square&labelColor=3D3929)](https://github.com/Jensen-Yao/dsh-plus-plus/releases)
 [![.NET](https://img.shields.io/badge/.NET-8.0_WPF-788C5D?style=flat-square&labelColor=3D3929)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-8F8B7E?style=flat-square&labelColor=3D3929)]()
-[![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.2%20verified-D5A144?style=flat-square&labelColor=3D3929)]()
 [![License](https://img.shields.io/badge/license-MIT-6E6A5E?style=flat-square&labelColor=3D3929)](LICENSE)
 
-[下载最新版](https://github.com/Jensen-Yao/dsh-plus-plus/releases/latest) · [快速开始](#使用) · [常见问题](#诊断)
+[下载最新版](https://github.com/Jensen-Yao/dsh-plus-plus/releases/latest) · [快速开始](#三步开始) · [常见问题](#常见问题) · [项目主页](https://jensen-yao.github.io/dsh-plus-plus/)
+
+<img src="docs/banner.png" alt="dsh++ 界面总览" width="100%"/>
 
 </div>
 
 ---
 
-![dsh++ 插件管理](docs/screenshots/plugins-light.png)
-![dsh++ 桌面版管理](docs/screenshots/desktop-light.png)
-![dsh++ 会话记录（演示数据）](docs/screenshots/sessions-dark.png)
-![dsh++ 服务总览（深色）](docs/screenshots/main-dark.png)
+## dsh++ 帮你做什么
 
-> 3.7 在插件更新前核对 DSH 内核要求、支持 next（RC）内核通道，并检查 / 修复 overlay patch 配置；3.6 让「升级到最新」可选固定或浮动声明并讲清版本被声明挡住的原因；3.5 增加插件“升级到最新”通道与官方桌面版更新管理。会话截图均为演示数据。
+DSH 本体是一套命令行工具：启动要敲参数、插件升级要看 npm、出问题要翻日志。dsh++ 把这些日常操作收进一个桌面窗口，并替你盯住那些容易出错的环节。
 
-## 使用
+| | |
+| --- | --- |
+| 🚀 **启动与远程** | 一键启动 / 停止 / 重启 DSH Web；手机用同一 Wi-Fi、Tailscale 或自定义域名访问，地址大字展示、一键复制 |
+| 🧩 **插件更新** | 看得懂的更新提示：为什么装不上、声明是什么、怎么解除；「升级到最新」可选固定版本或浮动声明，本地源码插件不会被静默替换 |
+| 🛡️ **防不兼容** | 更新前核对插件的 DSH 内核要求，版本不够会先拦下来并告诉你先升内核——不再装完才发现打不开 |
+| 🖥️ **官方桌面版** | 启停官方 Electron 桌面壳、同步 Web 配置、走官方通道更新；两端插件版本一页对照 |
+| ⬆️ **内核升级** | 正式版 / RC / 预览版三个通道，升级前后自动备份，失败一键回滚 |
+| 🩺 **健康诊断** | 本地只读体检：配置损坏、来源异常、中断的维护任务都能提前发现；overlay 配置坏了可以一键修复 |
 
-需要 Windows 10/11、.NET 8 Desktop Runtime、Node.js，以及已安装的 DSH。当前启动方式已在 DSH 0.2.1-rc.2 上验证。新配置默认仅本机访问、需要远程配对、不启用公网隧道；已有配置保留原来的连接偏好。
+![插件管理](docs/screenshots/plugins-light.png)
+![官方桌面版](docs/screenshots/desktop-light.png)
+![会话记录（演示数据）](docs/screenshots/sessions-dark.png)
 
-1. 完整解压 Windows x64 发布包，保留 EXE、compat-polyfill.js 和 scripts 目录。
-2. 在「数据与路径」确认 DSH 安装目录与数据目录。
-3. 在「远程连接」选择局域网、Tailscale 或自定义域名；仅本机使用时，在「启动设置」开启对应选项。
-4. 从「服务总览」启动，等待“运行中”，再点「打开 DSH」。
+## 三步开始
 
-运行与更新脚本从内嵌资源提取到状态目录 runtime-assets/<内容哈希>，始终使用持久缓存。清理构建 / 发布目录或升级控制台不会删除运行中的 Node 预加载脚本；不同版本的资产并存，不自动清理。旧版宿主迁移到此路径需重启一次 Web 服务，正在运行的服务不由控制台升级自动重启；完整发布包仍是推荐安装方式。
+1. **解压** [win-x64.zip](https://github.com/Jensen-Yao/dsh-plus-plus/releases/latest)，保留 EXE、`compat-polyfill.js` 和 `scripts` 目录，放进一个固定位置；
+2. **启动**：在「数据与路径」确认 DSH 安装目录后，从「服务总览」启动，等待"运行中"；
+3. **打开 DSH**：点「打开 DSH」进入 localhost。想用手机？「远程连接」页选局域网 / Tailscale / 域名。
 
-本机管理入口固定为 http://127.0.0.1:端口。远程模式额外在选中的具体网卡地址提供转发；转发保留 Host、Origin 和来源标记，远程客户端仍受 DSH 认证与远程插件配对检查控制。控制台不再生成 0.0.0.0 绑定。更改网卡、连接方式、域名后重启服务生效；修改端口或数据目录前先停止服务。
+> 需要 Windows 10/11、[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)、Node.js 和已安装的 DSH。
 
-插件市场在原启动参数及环境下重启 DSH 时，新进程会向同一次启动的宿主登记；远程转发在等待期间返回 503，登记后继续工作，不会随旧进程退出而消失。未登记进程不会在 DSH 缺席时通过该转发对外提供服务。等待上限使用 StartupTimeoutSeconds，到期仍无替代进程则关闭转发。明确停止服务后，迟到的同次启动进程也不会重新拉起服务。清理环境变量或替换启动入口的第三方重启方式不在此接续范围内。
+## 常见问题
 
-## 插件维护
+**更新插件时提示「有新版（声明 范围外）」或「固定 版本」，怎么办？**
+这是 package.json 里的版本声明把新版挡住了，普通更新只装声明范围内的版本。选中插件点「升级到最新」，可以选择固定到新版，或改成 `^` 浮动声明（以后普通更新就能继续升级）。注意 0.x 包的 `^` 只跟随同一小版本。
 
-「插件管理」列出每个 profile 的直接入口与聚合子插件、已安装版本、实际来源和更新策略。可以按 profile、可维护、有新版、固定版本、本地链接、官方依赖、来源异常和聚合子包筛选，并导出当前显示的 JSON 清单。聚合子包显示所属更新入口，不会在更新时意外提升为直接依赖。搜索与筛选只影响显示；“更新所选”处理所有勾选入口。
+**提示「需内核 ≥x.y.z」？**
+插件要求更高的 DSH 内核。先到「版本与备份」页升级内核（正式版 / RC 版 / 预览版），再回来更新插件。
 
-“打开时检查控制台、内核与 web 插件”会后台检查三个目标，不安装依赖、不联网修复或阻挡服务启动。手动检查覆盖当前 profile 的全部入口和已发现子包，不受搜索或“有新版”筛选隐藏；普通刷新保留安装信息没有变化的检查结果。失败显示失败与检查时间，不把网络故障当成“已是最新”。维护开始前会取消并等待插件检查结束。
+**官方桌面版打不开？**
+多数情况是 `cordis.patch.yml` 被官方插件安装器写坏。打开「诊断与日志」→ 重新检查，会直接指出问题；点「修复 overlay patch」即可恢复（自动备份原文件）。
 
-npm 同时查询 latest 与声明内目标，并读取目标版本的 DSH 内核要求（peerDependencies 的 @deepseek-ai/dsh，回退 dsh.engines.dsh）：声明内目标或远端 latest 要求的内核高于本地时，状态、悬停详情与选中提示会显示要求范围、当前内核和“先升级内核”的指引；安装前解析阶段会拦截内核不满足的目标（不停止服务、不修改依赖），批量更新中被挡住的项自动跳过。声明范围外的新版本状态显示“有新版（声明 范围外）”，精确固定版本显示“有新版（固定 版本）”，悬停可见声明内最高版本、远端 latest 与解除方法。选择插件后可用「升级到最新」显式切换到远端发布版：npm 插件会先选择升级后的声明方式（默认浮动 ^ 范围，之后「更新所选」可继续安装范围内新版；或固定精确版本，0.x 包会提示 ^ 只跟随同一小版本），固定 Git tag 与本地链接也支持该通道。Git 浮动分支比较远端提交与锁定提交，固定 tag 列出更高版本 tag，注解 tag 使用剥离后的提交。只沿含 dsh.bundle 元数据的依赖展开聚合插件，不扫描所有普通 npm 工具依赖。
+**Web 和桌面版能同时开吗？**
+可以，但任务看板有单写锁，同时运行时后启动一端的看板会降级；核心聊天、会话和插件界面不受影响。
+
+**会话记录会被修改吗？**
+不会。「会话记录」页只读列出官方会话目录的标题与活动时间，不解压、不迁移、不改写任何官方数据。
+
+---
+
+## 进阶说明
+
+<details>
+<summary><b>使用与网络</b></summary>
+
+新配置默认仅本机访问、需要远程配对、不启用公网隧道；已有配置保留原来的连接偏好。本机管理入口固定为 http://127.0.0.1:端口。远程模式在选中的具体网卡地址提供转发，不绑定 0.0.0.0；转发保留 Host、Origin 和来源标记，远程客户端仍受 DSH 认证与远程插件配对检查控制。更改网卡、连接方式、域名后重启服务生效；修改端口或数据目录前先停止服务。
+
+插件市场在原启动参数及环境下重启 DSH 时，新进程会向同一次启动的宿主登记；远程转发在等待期间返回 503，登记后继续工作。等待上限使用 StartupTimeoutSeconds；明确停止服务后，迟到的同次启动进程不会重新拉起服务。
+
+</details>
+
+<details>
+<summary><b>插件维护语义</b></summary>
+
+「插件管理」列出每个 profile 的直接入口与聚合子插件、已安装版本、实际来源和更新策略，支持按 profile、可维护、有新版、固定版本、本地链接、官方依赖、来源异常和聚合子包筛选，可导出 JSON 清单。聚合子包显示所属更新入口，不会在更新时意外提升为直接依赖。
+
+npm 同时查询 latest 与声明内目标，并读取目标版本的 DSH 内核要求（peerDependencies 的 @deepseek-ai/dsh，回退 dsh.engines.dsh）；不满足时状态、详情与确认框都会说明，安装前解析阶段硬性拦截（不停止服务、不修改依赖）。
 
 | 来源 / 声明 | 默认行为 |
 | --- | --- |
 | npm 版本范围 | 显示 latest，普通更新只安装声明内精确目标 |
 | 未固定版本的 GitHub / Git | 查询远端 ref，安装精确提交后保留原分支声明 |
 | 精确版本、Git tag、commit | 批量更新保留；可用「升级到最新」切换新 tag / 版本（npm 可选固定或浮动声明） |
-| link: / file: / workspace: | 批量更新保留本地来源；可用「升级到最新」切换远端发布版 |
-| @deepseek-ai/* 伴随包 | 标记“跟随内核”，不参加普通插件更新 |
+| link: / file: / workspace: | 批量更新保留本地来源；可用「升级到最新」切换远端发布版（先核对 repository 身份） |
+| @deepseek-ai/* 伴随包 | 标记"跟随内核"，不参加普通插件更新 |
 | 聚合子包 | 检查版本，由所属直接入口维护 |
 
-一次更新按以下顺序执行：确认声明与停机影响 → 在原服务运行时解析精确版本 / 提交 → 取得维护锁并检查依赖未被其他程序改动 → 保存恢复点 → 停止原服务 → 仅安装所选入口的精确目标 → 核对实际版本 / Git 提交及来源 → 保留原声明 → 配置组合检查 → 按偏好重新启动并验证网页。解析失败或目标已经就位时不停止服务；命令退出 0 却没有达到目标仍视为失败。失败报告包含阶段、目标、命令、退出码和保留首尾的关键输出；下载失败包含 HTTP 状态、地址、期望 / 实际大小和 SHA-512 期望 / 实际值；桌面更新还包含安装器退出码、runtime 目标 / 实际版本和原桌面版恢复结果。失败或取消后恢复原清单与锁文件，再安装原依赖；原服务之前运行时尝试恢复启动。恢复依赖需要本地缓存或网络，失败时保留恢复点并报告错误。
+一次更新按以下顺序执行：确认声明与停机影响 → 在原服务运行时解析精确版本 / 提交 → 取得维护锁 → 保存恢复点 → 停止原服务 → 仅安装所选入口的精确目标 → 核对实际版本 / 提交及来源 → 保留原声明 → 配置组合检查 → 按偏好重新启动并验证网页。失败或取消后恢复原清单与锁文件，再安装原依赖；原服务之前运行时尝试恢复启动。pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁；安装精确目标后只恢复该项的原声明，保留 pnpm 生成的版本、提交、完整性哈希和共享依赖图。
 
-pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁。安装与恢复需要可复现的解析结果，主动更新则只刷新明确选择的目标。3.2 用 YamlDotNet 解析锁文件：远端声明对应本地 file: 归档 / link:、声明不一致、格式损坏都会提示来源问题；不删除整个锁文件或自动升级全部插件。安装精确目标后，只恢复该项的原声明，保留 pnpm 生成的版本、提交、完整性哈希和共享依赖图。跨包共享依赖仍可能随所选目标变化。
+</details>
 
-更新过程中可以取消，取消后的恢复阶段需等待完成。其他服务启停和依赖修改在维护期间不可并行执行。跨控制台进程的维护通过文件独占锁协调。
+<details>
+<summary><b>官方桌面版与同步</b></summary>
 
-固定 GitHub tag 不会在“更新所选”中自动跳到新 tag；「升级到最新」会单独确认并切换。运行时更新器不会自动修复所有社区插件的 API 不兼容；组合检查只验证静态配置，原服务此前未运行时不会自行拉起服务做运行验证。
+「桌面版」页显示安装路径、runtime 版本、进程数与 desktop profile，支持启停和只读版本检查。官方更新读取安装包自带 feed，下载后核对大小与 SHA-512，由官方 NSIS 安装器静默更新并复核 runtime 版本；dsh++ 不手工替换官方内置文件。
 
-## 会话记录与外观
+「从 Web 同步配置」把 web profile 的社区插件入口、bundle 顺序和用户 patch 配置投影到 desktop profile：npm 范围会钉成 web 当前安装版本；官方依赖、Electron 与 Playwright 构建依赖不复制。执行时先备份、停止桌面版、安装依赖、核对两端版本一致、启动官方桌面版验证，再恢复原运行状态。桌面版与 Web 端共享 `~/.dsh` 的会话、凭据、技能和工作区，但使用独立 `profiles/desktop`。
 
-「会话记录」只读列出当前 DSH_HOME 下实际存在的会话目录，从官方 session_projcache 分片及旧版缓存提取标题、工作目录、已记录轮数与最近提问时间；缺少时间时使用目录时间。它不解压或迁移会话日志、不激活 Agent、不改写官方数据，也不把标题缓存当作实时运行状态。支持搜索标题 / 路径 / ID、工作目录筛选、复制 ID 和打开记录目录；总览的「最近会话」栏可双击定位完整列表。默认显示最近 500 条，可通过 SessionHistoryLimit 调整为 50–2000 条。`--session-history` 只输出数量摘要到状态目录，不导出会话标题或正文。完整会话继续由 DSH 打开和编辑。
+</details>
 
-彩虹徽标沿用官方 @deepseek-ai/dsh-client-ui-primitives 的 FishLogo 矢量原稿，仅动画化填充色；dsh++ 仍是独立社区控制台，不是官方桌面客户端。Windows 11 支持时，液体玻璃使用系统桌面亚克力背景与半透明侧栏、反光描边和工具栏；其他系统使用可读的半透明 / 实色材质。启动设置中可分别关闭玻璃与徽标动画，并遵循系统减少动画、关闭透明度和高对比度设置。
+<details>
+<summary><b>诊断、会话与外观</b></summary>
 
-## 官方桌面版
+健康检查只执行本地 npm / pnpm 版本命令并读取安装与状态文件，不联网安装、不启停服务；按错误、注意、通过、信息列出启动资产、端口归属、插件安装、客户端构建产物、锁文件来源、overlay patch（多文档 / 语法损坏 / 重复条目）与中断维护，支持导出脱敏报告。「修复 overlay patch」移除 cordis.patch.yml 中孤立的 --- / ... 文档分隔符（先自动备份），重复条目建议用「从 Web 同步配置」对齐。运行日志常见凭据字段自动脱敏。
 
-「桌面版」页管理官方 Electron 桌面壳。它显示安装路径、应用 runtime 版本、进程数、desktop profile 与桌面状态目录，支持启动、停止、重启、打开安装目录 / profile / 日志，以及对 desktop profile 的所有外部插件做只读版本检查。官方更新读取安装包自带的 feed，显示远端版本、大小和发布时间；下载后核对大小与 SHA-512，再由官方 NSIS 安装器静默更新并复核 runtime 版本。dsh++ 不手工替换官方内置文件。
+「会话记录」只读列出当前 DSH_HOME 下的会话目录，从官方缓存提取标题、工作目录、轮数与最近提问时间；默认显示最近 500 条，可通过 SessionHistoryLimit 调整为 50–2000 条。彩虹徽标沿用官方 FishLogo 矢量原稿仅动画化填充色；dsh++ 是独立社区控制台，不是官方桌面客户端。Windows 11 支持液体玻璃材质；启动设置可关闭玻璃与徽标动画，并遵循系统减少动画与高对比度设置。
 
-「插件版本对照」列出两端的社区入口、已安装版本和声明差异，可只看差异，悬停插件名称查看两端声明。版本一致但 npm 范围不同会单独标记，不视为未安装或版本落后。
+</details>
 
-「从 Web 同步配置」把 web profile 的社区插件入口、bundle 顺序和用户 patch 配置投影到 desktop profile：npm 范围会钉成 web 当前安装版本；没有安装产物时保留原声明；官方 `@deepseek-ai/*` 依赖、Electron 与 Playwright 构建依赖不复制；`web-ui-remote-web-ui` 的自动公网隧道覆盖会在桌面端移除。声明、用户 patch 和安装版本已经一致时直接返回。执行时先取得维护锁并保存备份，再停止桌面版、安装依赖、核对所有同步入口与 web 的实际版本、启动官方桌面版验证 Host，结束验证进程，最后按更新偏好恢复原运行状态。失败或取消时回滚并尝试恢复原运行端。desktop profile 的插件更新、恢复备份和中断恢复使用同样的宿主范围；不停止 Web 服务。
+<details>
+<summary><b>配置项与命令行</b></summary>
 
-桌面版与 web 端共享 `~/.dsh` 的会话、凭据、技能和工作区，但使用独立 `profiles/desktop`。两端可以同时待机；仍应避免同时在两个壳里编辑同一个会话。
-任务看板使用全局单写锁，dsh++ 会在桌面页显示当前持有端。桌面版与 Web 端同时运行时，后启动一端的任务看板会降级；核心聊天、会话和插件界面仍可用。需要完整任务看板时，让对应一端独占运行。
-
-## 版本与备份
-
-- DSH：查看 npm latest / next（RC）/ alpha 通道，安装前解析精确版本，只备份安装目录与实际同步的 web profile。内核更新时同步 web profile 的官方伴随包，也可以单独点“同步官方依赖”；目标版本来自实际内核安装目录，其他 profile 与社区插件不参加这一步。
-- dsh++：检查 GitHub Windows x64 发布包，验证必需文件后替换，旧程序保留在 app-updates 目录。
-- 恢复点：保存 package.json、pnpm-lock.yaml / package-lock.json、cordis.patch.yml、pnpm-workspace.yaml 和 .npmrc；不复制会话或凭据数据目录。存在锁文件时按锁安装；没有锁文件时仅能按原声明重新解析，不能保证传递依赖的原版本。
-- 手动备份：使用插件页选择的 profile；“全部 Profile”时默认为 web。目录里仍可能包含敏感配置，请妥善保管恢复点。
-- 维护记录：保存在状态目录的 history 下，包含目标、阶段、结果、恢复点与包管理子进程信息。控制台异常退出后，未完成任务显示为“待恢复”，新的依赖修改暂停；启动 DSH 不受此限制，不自动联网修复。在“恢复中断任务”中明确确认后，会核对并结束该任务遗留的 Node 安装进程，再保存当前恢复点并恢复旧依赖。记录与恢复点只覆盖依赖及配置，不提供会话数据库迁移回滚。
-
-## 诊断
-
-「诊断与日志」分为健康检查和运行日志。健康检查在打开控制台时后台执行，也可手动刷新，只执行本地 npm / pnpm 版本命令并读取安装与状态文件，不联网安装、不启停服务。它按错误、注意、通过、信息列出启动资产、计划绑定、端口归属、插件安装、客户端构建产物、锁文件来源、overlay patch（cordis.patch.yml 多文档 / 语法损坏 / 重复条目）、Web 官方伴随包和中断维护；支持仅显示需处理项和导出脱敏报告。Web 与桌面版共用任务看板单写锁时会提示持有端。此检查不加载插件，不能证明插件 API 兼容；详细诊断仍提供 Web 静态配置组合检查。
-
-「修复 overlay patch」按钮移除 cordis.patch.yml 中孤立的 --- / ... 文档分隔符（官方桌面端插件管理器追加安装条目时可能写入），修复前自动备份到同目录 .bak-时间戳；重复条目 id 不自动合并，桌面端建议用「从 Web 同步配置」以 web 为准重建。
-
-运行日志支持复制、导出和暂停跟随，常见 token、API key、密码与 Authorization 值会脱敏；导出前仍应检查插件是否输出了未识别的敏感字段。
-
-命令 `dsh-plus-plus.exe --health` 将同一份只读检查结果保存为状态目录下的 health-report.txt；有错误时返回 1，提醒不视为检查失败。它不改变 profile 或运行端状态。
-
-Freebuff 保留为独立 Docker 组件，由用户手动启停。启动 dsh++ 不会启动 Freebuff；连接信息默认隐藏。配置中的 FreebuffDir 与 FreebuffDocker 可以调整项目和 Docker Desktop 路径。
-
-## 配置
-
-默认状态目录是 %APPDATA%\dsh-control；可以用 DSHPP_STATE_DIR 指定独立状态目录。config.json 持久化主题、窗口位置、数据路径、启动与更新偏好。旧版 AutoUpdatePlugins 自动迁移为关闭，CheckUpdatesOnLaunch 只做版本检查。配置采用临时文件写入后替换，窗口尺寸尚未保存时的 NaN 值可以正常序列化。
+默认状态目录是 %APPDATA%\dsh-control；可用 DSHPP_STATE_DIR 指定。config.json 持久化主题、窗口位置与路径偏好，临时文件写入后替换。
 
 | 设置 | 用途 |
 | --- | --- |
 | DshAppDir | 包含 node_modules/@deepseek-ai/dsh 的安装目录 |
-| DshDesktopDir | 官方桌面版安装目录，默认 F:\dsh-desktop |
+| DshDesktopDir | 官方桌面版安装目录 |
 | DshHome / AgentsHome | 传给服务的 DSH_HOME / DSH_AGENTS_HOME |
-| Mode / AccessMode / BindHost | 本机或远程模式、连接方式、具体网卡；BindHost 为空时自动选择 |
-| RestartAfterUpdate | 更新后恢复原先运行的服务，默认开启 |
-| StartupTimeoutSeconds | 网页就绪及重启接续等待，默认 60 秒；设置页可调整 10–180 秒 |
-| UpdateTimeoutMinutes | 每条包管理命令超时，默认 15 分钟；设置页可调整 1–60 分钟 |
-| BrowserCompatibilityPatch | 是否应用已有的旧浏览器兼容补丁 |
+| Mode / AccessMode / BindHost | 本机或远程模式、连接方式、具体网卡 |
+| RestartAfterUpdate | 更新后恢复原先运行的服务（默认开启） |
+| StartupTimeoutSeconds | 网页就绪及重启接续等待，默认 60 秒（10–180） |
+| UpdateTimeoutMinutes | 每条包管理命令超时，默认 15 分钟（1–60） |
 
-## 开发与验证
+命令行：`--service start|stop|restart|status`、`--desktop start|stop|restart|sync-web|check-update|update|status`、`--runtime-update <latest|alpha|next|版本>`、`--check-plugins [profile]`、`--health`、`--session-history`、`--self-test`、`--smoke`。结果分别写入状态目录对应的 txt / json 文件。
+
+</details>
+
+<details open>
+<summary><b>开发与验证</b></summary>
 
 ~~~powershell
 dotnet build dsh-plus-plus.csproj -c Release
@@ -125,24 +142,19 @@ dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
 .\publish\dsh-plus-plus.exe --self-test
 .\publish\dsh-plus-plus.exe --smoke
 .\publish\dsh-plus-plus.exe --render-check "F:\temp\dshpp-ui"
-.\publish\dsh-plus-plus.exe --service status
-.\publish\dsh-plus-plus.exe --check-plugins web
-.\publish\dsh-plus-plus.exe --desktop check-update
-.\publish\dsh-plus-plus.exe --desktop sync-web
 node --test tests/runtime-host.test.mjs
 ~~~
 
-self-test 使用临时目录检查目标解析、声明保留、声明外升级、固定 tag 升级、旧产物假成功拒绝、失败 / 取消恢复、聚合发现、来源偏差、注解 tag、官方桌面 feed / ASAR 版本、维护互斥、桌面同步计划、持久预加载、桌面回滚不影响 Web，以及会话标题 / 缓存损坏 / 只读读取；另外用本机回环 registry 驱动真实 npm / pnpm，验证更新后的锁文件仍可 frozen offline 安装。不修改用户 profile，不需要外网 registry。Node 集成检查验证 HTTP / WebSocket 转发、来源标记、进程替换接续、停止与超时释放。render-check 输出 10 个页面在深浅主题、1220×820 / 920×640 窗口下的渲染图，加上筛选、空状态、维护确认和升级声明选择窗口，共 70 张，附按钮裁切报告；另输出两帧徽标与交互报告，验证彩虹颜色变化、会话筛选和玻璃开关。公开截图中的会话均为演示数据，不截取用户真实标题；不执行依赖更新或模型调用。
+self-test 115 项覆盖目标解析、声明保留、声明外升级、内核要求拦截、失败 / 取消恢复、聚合发现、来源偏差、官方桌面 feed / ASAR 版本、维护互斥、桌面同步计划、overlay 检查修复，以及用本机回环 registry 驱动真实 npm / pnpm 的 frozen offline 安装验证；不修改用户 profile，不需要外网 registry。render-check 输出 70 张深浅主题渲染图与按钮裁切报告。主要文件：RuntimeLifecycle.cs（服务生命周期）、DesktopIntegration.cs / DesktopSynchronization.cs（桌面版）、PluginInventory.cs / PluginLock.cs / PluginUpdates.cs（插件）、PluginMaintenance.cs / MaintenanceHistory.cs（维护与恢复）、PatchOverlay.cs（overlay 体检修复）、MainWindow.xaml(.cs)（界面）。
 
-check-plugins 是只读版本诊断，默认检查 web；结果写入状态目录的 plugin-update-check.json。任一远端检查失败或 profile 不存在时退出码为 1，发现新版或来源提示本身不视为命令失败。
+</details>
 
-service 支持 start / stop / restart / status；结果写入状态目录的 service-result.txt。服务由独立 Node 宿主维持，关闭控制台可以保留后台服务；端口停止操作会先检查 DSH 进程归属。
+---
 
-`--runtime-update <latest|alpha|next|版本号>` 走与界面相同的内核更新流程（解析精确版本、备份、停止服务、安装、核对版本、同步伴随包、按偏好恢复服务），结果写入状态目录的 runtime-update-result.txt。
-desktop 支持 start / stop / restart / sync-web / check-update / update / status；结果写入 desktop-result.txt。桌面版进程按安装目录精确匹配，不会误杀其他 Electron 应用。
+<div align="center">
 
-主要文件：RuntimeLifecycle.cs 负责服务生命周期；DesktopIntegration.cs 与 DesktopSynchronization.cs 负责桌面版进程和 profile 投影；PluginInventory.cs、PluginLock.cs 与 PluginUpdates.cs 负责聚合发现、来源读取和目标解析；PluginMaintenance.cs 与 MaintenanceHistory.cs 负责维护、记录和恢复；CommandRunner.cs 负责取消与超时；scripts/runtime-host.mjs 负责服务登记与远程转发；MainWindow.xaml(.cs) 与 UpdatePreviewWindow.xaml(.cs) 负责界面。
+**MIT License** · dsh++ 是社区项目，与 DeepSeek 官方无关联
 
-Windows 发布包与变更记录见 [GitHub Releases](https://github.com/Jensen-Yao/dsh-plus-plus/releases)。
+截图为 3.7.1 界面渲染图，会话均为演示数据
 
-MIT License.
+</div>

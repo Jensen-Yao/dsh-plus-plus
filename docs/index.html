@@ -6,194 +6,244 @@
 <title>dsh++ — DeepSeek Harness 桌面控制台</title>
 <link rel="icon" type="image/png" href="icon.png" />
 <meta property="og:title" content="dsh++ — DeepSeek Harness 桌面控制台" />
-<meta property="og:description" content="Web 与官方桌面版生命周期、插件维护、会话总览与健康诊断，收进一个安静的 Windows 窗口。" />
-<meta property="og:image" content="https://jensen-yao.github.io/dsh-plus-plus/icon.png" />
+<meta property="og:description" content="不用记命令行——启动、更新、排查，都在一个窗口里。" />
+<meta property="og:image" content="https://jensen-yao.github.io/dsh-plus-plus/banner.png" />
 <style>
   :root {
-    --bg: #F0EEE6; --bg2: #ECEAE1; --surface: #FAF9F5;
+    --bg: #F0EEE6; --surface: #FAF9F5; --surface2: #F5F4EE;
     --text: #3D3929; --text2: #6E6A5E; --text3: #8F8B7E;
-    --primary: #C96442; --primary-hover: #D97757;
-    --green: #788C5D; --border: #E3DFD3; --hero-bg: #F5EFE2; --hero-border: #E6DCC6;
+    --accent: #C96442; --accent-bright: #D97757; --accent-deep: #B5573B;
+    --olive: #788C5D; --border: #E3DFD3; --border2: #D6D0C2;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
   body {
     background: var(--bg); color: var(--text);
     font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
-    line-height: 1.65; -webkit-font-smoothing: antialiased;
+    font-size: 16px; line-height: 1.75; -webkit-font-smoothing: antialiased;
   }
   .serif { font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
-  header {
-    background: var(--bg2); border-bottom: 1px solid var(--border);
-    padding: 18px 0;
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 28px; }
+  a { color: var(--accent-deep); }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(240, 238, 230, .88); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
   }
-  header .wrap { display: flex; align-items: center; gap: 14px; }
-  .logo {
-    width: 44px; height: 44px; border-radius: 12px; background: var(--primary);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 20px; color: #fff; flex: none;
+  nav .wrap { display: flex; align-items: center; gap: 12px; height: 60px; }
+  nav img { width: 34px; height: auto; }
+  nav .name { font-weight: 700; font-size: 17px; letter-spacing: .2px; }
+  nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 14px; }
+  nav .links a { color: var(--text2); text-decoration: none; }
+  nav .links a:hover { color: var(--accent-deep); }
+  nav .dl {
+    background: var(--accent); color: #fff !important; text-decoration: none;
+    border-radius: 999px; padding: 6px 18px; font-weight: 600;
   }
-  header h1 { font-size: 22px; font-weight: 700; }
-  header .sub { font-size: 13px; color: var(--text2); margin-top: 1px; }
-  header .gh { margin-left: auto; }
-  header .gh a {
-    color: var(--text2); text-decoration: none; font-size: 13px;
-    border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px;
-    background: var(--surface);
+  nav .dl:hover { background: var(--accent-bright); }
+
+  /* hero */
+  .hero { text-align: center; padding: 88px 0 40px; }
+  .hero img.logo {
+    width: 132px; height: auto;
+    filter: drop-shadow(0 10px 24px rgba(61, 57, 41, .18));
   }
-  header .gh a:hover { color: var(--primary); border-color: var(--primary); }
-  .hero { padding: 64px 0 40px; text-align: center; }
-  .hero h2 { font-size: 40px; font-weight: 700; letter-spacing: .5px; }
-  .hero h2 span { color: var(--primary); }
-  .hero p { color: var(--text2); font-size: 17px; max-width: 680px; margin: 14px auto 0; }
-  .hero .tags { margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  .hero .tags span {
-    font-size: 12.5px; color: var(--text2);
-    border: 1px solid var(--border); border-radius: 999px; padding: 4px 14px;
-    background: var(--surface);
+  .hero h1 { font-size: 52px; font-weight: 700; letter-spacing: .3px; margin-top: 28px; line-height: 1.2; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p.sub { color: var(--text2); font-size: 18px; max-width: 560px; margin: 16px auto 0; }
+  .hero .cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .hero .cta a {
+    text-decoration: none; font-size: 15.5px; border-radius: 999px; padding: 12px 30px; font-weight: 600;
   }
-  .cta { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .cta a {
-    text-decoration: none; font-size: 15px; border-radius: 10px; padding: 11px 26px; font-weight: 600;
+  .hero .cta .primary { background: var(--accent); color: #fff; box-shadow: 0 6px 18px rgba(201, 100, 66, .28); }
+  .hero .cta .primary:hover { background: var(--accent-bright); }
+  .hero .cta .ghost { color: var(--text2); border: 1px solid var(--border2); background: var(--surface); }
+  .hero .cta .ghost:hover { color: var(--text); border-color: var(--text3); }
+  .hero .meta { margin-top: 26px; font-size: 13.5px; color: var(--text3); }
+  .hero .meta b { color: var(--olive); font-weight: 600; }
+
+  /* banner */
+  .banner { padding: 26px 0 8px; }
+  .banner img {
+    width: 100%; display: block; border-radius: 20px;
+    border: 1px solid var(--border); box-shadow: 0 24px 64px rgba(61, 57, 41, .14);
   }
-  .cta .primary { background: var(--primary); color: #fff; }
-  .cta .primary:hover { background: var(--primary-hover); }
-  .cta .ghost { color: var(--text2); border: 1px solid var(--border); background: var(--surface); }
-  .cta .ghost:hover { color: var(--text); border-color: var(--text3); }
-  .shots { padding: 30px 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .shots figure {
+
+  /* section rhythm */
+  section { padding: 72px 0 8px; }
+  section h2 {
+    font-size: 32px; font-weight: 700; letter-spacing: .3px; text-align: center;
+  }
+  section .lead { color: var(--text2); text-align: center; max-width: 560px; margin: 10px auto 40px; }
+
+  /* capabilities */
+  .caps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .cap {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; overflow: hidden;
+    border-radius: 16px; padding: 24px 26px;
   }
-  .shots img { width: 100%; display: block; }
-  .shots figcaption { font-size: 13px; color: var(--text2); text-align: center; padding: 10px; }
-  @media (max-width: 860px) { .shots { grid-template-columns: 1fr; } .hero h2 { font-size: 30px; } }
-  section { padding: 44px 0; }
-  section h3 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
-  section .lead { color: var(--text2); margin-bottom: 26px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; padding: 20px 22px;
+  .cap .ico { font-size: 22px; line-height: 1; }
+  .cap h3 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; }
+  .cap p { font-size: 14.5px; color: var(--text2); line-height: 1.7; }
+  @media (max-width: 720px) { .caps { grid-template-columns: 1fr; } .hero h1 { font-size: 36px; } }
+  @media (max-width: 520px) {
+    nav .links a:not(.dl) { display: none; }
+    nav .name { font-size: 16px; }
+    .hero h1 { font-size: 30px; }
+    .hero .cta a { padding: 11px 22px; font-size: 14.5px; }
   }
-  .card .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); display: inline-block; margin-right: 8px; }
-  .card h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
-  .card p { font-size: 14px; color: var(--text2); }
-  .steps { counter-reset: step; display: grid; gap: 14px; max-width: 720px; }
+
+  /* steps */
+  .steps { counter-reset: step; display: grid; gap: 14px; max-width: 640px; margin: 0 auto; }
   .step {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; padding: 16px 20px; display: flex; gap: 16px; align-items: flex-start;
+    display: flex; gap: 18px; align-items: flex-start;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px;
   }
   .step .n {
-    counter-increment: step; width: 30px; height: 30px; flex: none;
-    background: var(--hero-bg); border: 1px solid var(--hero-border); color: var(--primary);
-    border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;
+    counter-increment: step; width: 34px; height: 34px; flex: none;
+    background: var(--surface2); border: 1px solid var(--border2); color: var(--accent);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-family: Georgia, serif; font-weight: 700; font-size: 16px;
   }
   .step .n::before { content: counter(step); }
-  .step b { display: block; margin-bottom: 2px; }
-  .step span { color: var(--text2); font-size: 14px; }
+  .step b { display: block; font-size: 15.5px; }
+  .step span { color: var(--text2); font-size: 14.5px; }
+
+  /* faq */
+  .faq { max-width: 680px; margin: 0 auto; }
+  .faq details {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 18px 24px; margin-bottom: 12px;
+  }
+  .faq summary { font-weight: 600; font-size: 15.5px; cursor: pointer; list-style: none; }
+  .faq summary::before { content: "+ "; color: var(--accent); font-weight: 700; }
+  .faq details[open] summary::before { content: "− "; }
+  .faq details p { color: var(--text2); font-size: 14.5px; margin-top: 10px; }
+  .faq details p code {
+    font-family: Consolas, monospace; font-size: 13px; color: var(--accent-deep);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
+  }
+
+  /* shots strip */
+  .strip { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+  .strip figure {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+  }
+  .strip img { width: 100%; display: block; }
+  .strip figcaption { font-size: 13px; color: var(--text3); text-align: center; padding: 10px; }
+  @media (max-width: 720px) { .strip { grid-template-columns: 1fr; } }
+
+  /* build */
   pre {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px 18px; overflow-x: auto; font-size: 13.5px;
-    font-family: "Cascadia Code", Consolas, monospace; color: var(--primary);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px; overflow-x: auto; font-size: 13.5px;
+    font-family: "Cascadia Code", Consolas, monospace; color: var(--accent-deep);
+    max-width: 640px; margin: 0 auto;
   }
-  code.inline {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
-    padding: 1px 7px; font-family: Consolas, monospace; font-size: 13px; color: var(--primary);
-  }
+
   footer {
-    margin-top: 30px; border-top: 1px solid var(--border);
-    padding: 26px 0; color: var(--text3); font-size: 13px; text-align: center;
+    margin-top: 88px; border-top: 1px solid var(--border);
+    padding: 34px 0 44px; color: var(--text3); font-size: 13.5px; text-align: center; line-height: 2;
   }
   footer a { color: var(--text2); text-decoration: none; }
-  footer a:hover { color: var(--primary); }
+  footer a:hover { color: var(--accent-deep); }
 </style>
 </head>
 <body>
 
-<header>
+<nav>
   <div class="wrap">
-    <div class="logo">++</div>
-    <div>
-      <h1 class="serif">dsh++</h1>
-      <div class="sub">DeepSeek Harness 桌面控制台 · dsh-plugin</div>
+    <img src="logo-rainbow.png" alt="dsh++ 徽标" />
+    <span class="name serif">dsh++</span>
+    <div class="links">
+      <a href="#caps">功能</a>
+      <a href="#start">上手</a>
+      <a href="#faq">常见问题</a>
+      <a class="dl" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases/latest">下载 v3.7.1</a>
     </div>
-    <div class="gh"><a href="https://github.com/Jensen-Yao/dsh-plus-plus">GitHub 仓库</a></div>
   </div>
-</header>
+</nav>
 
 <div class="hero">
   <div class="wrap">
-    <h2 class="serif">dsh 的版本、插件与两端运行，<span>一眼看清</span></h2>
-    <p>dsh++ 3.7 集中管理 Web 服务与官方桌面版的生命周期、插件更新与恢复点。更新前核对 DSH 内核要求，「升级到最新」可选固定或浮动声明，健康诊断能发现并修复损坏的 overlay 配置。</p>
-    <div class="tags">
-      <span>Windows 10/11</span><span>.NET 8 · WPF</span><span>深浅双主题</span>
-      <span>内核要求核对</span><span>插件维护</span><span>官方桌面版</span><span>健康诊断</span><span>MIT</span>
-    </div>
+    <img class="logo" src="logo-rainbow.png" alt="dsh++ 彩虹徽标" />
+    <h1 class="serif">启动、更新、排查，<br/><em>一个窗口</em>就够</h1>
+    <p class="sub">dsh++ 是 DeepSeek Harness 的 Windows 桌面控制台——不用记命令行，插件更新看得懂，出问题有人管。</p>
     <div class="cta">
-      <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载 v3.7.1</a>
-      <a class="ghost" href="https://github.com/Jensen-Yao/dsh-plus-plus#readme">查看 README</a>
+      <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases/latest">下载 Windows 版</a>
+      <a class="ghost" href="https://github.com/Jensen-Yao/dsh-plus-plus#readme">查看文档</a>
     </div>
+    <div class="meta">当前 <b>v3.7.1</b> · Windows 10/11 · .NET 8 · MIT · 开源</div>
   </div>
 </div>
 
-<div class="wrap">
-  <div class="shots">
-    <figure>
-      <img src="screenshots/plugins-light.png" alt="dsh++ 插件管理" />
-      <figcaption>插件管理 · 声明解析与内核要求核对</figcaption>
-    </figure>
-    <figure>
-      <img src="screenshots/desktop-light.png" alt="dsh++ 官方桌面版管理页" />
-      <figcaption>官方桌面版管理与两端插件对照</figcaption>
-    </figure>
-    <figure>
-      <img src="screenshots/sessions-dark.png" alt="dsh++ 会话记录（演示数据）" />
-      <figcaption>会话总览（只读 · 演示数据）</figcaption>
-    </figure>
-    <figure>
-      <img src="screenshots/main-light.png" alt="dsh++ 服务总览" />
-      <figcaption>服务总览</figcaption>
-    </figure>
-  </div>
+<div class="wrap banner">
+  <img src="banner.png" alt="dsh++ 界面总览" />
 </div>
 
-<section>
+<section id="caps">
   <div class="wrap">
-    <h3 class="serif">功能</h3>
-    <p class="lead">一个窗口，管好 dsh 的全部日常运维</p>
-    <div class="grid">
-      <div class="card"><h4><span class="dot"></span>Web 生命周期</h4><p>启动、停止与重启 dsh web，验证网页就绪。本机入口保持 localhost，远程入口绑定所选网卡的具体 IP，进程替换后转发自动接续。</p></div>
-      <div class="card"><h4><span class="dot"></span>插件维护</h4><p>按来源、状态和 profile 筛选；普通更新只装声明内精确目标，「升级到最新」可选固定版本或浮动 ^ 声明，本地 link/file 不被静默替换。</p></div>
-      <div class="card"><h4><span class="dot"></span>内核要求核对</h4><p>检查与更新前读取目标版本的 DSH 内核要求（peerDependencies / engines），不满足时说明差距并先拦截，避免装上不兼容的插件。</p></div>
-      <div class="card"><h4><span class="dot"></span>官方桌面版</h4><p>管理 Electron 桌面壳进程、版本、日志和 desktop profile；可把 web 的社区插件与配置同步过去，官方 feed 更新经大小与 SHA-512 校验。</p></div>
-      <div class="card"><h4><span class="dot"></span>内核与恢复点</h4><p>DSH 内核支持 latest / next（RC）/ alpha 通道与精确版本；每次维护先保存恢复点，失败或中断后可核对恢复，不删除锁文件。</p></div>
-      <div class="card"><h4><span class="dot"></span>远程入口</h4><p>同一 Wi-Fi / 自定义域名 / Tailscale 三种方式，大字地址一键复制；远程请求保留来源标记，仍受 DSH 认证与配对控制。</p></div>
-      <div class="card"><h4><span class="dot"></span>会话总览</h4><p>只读列出官方 DSH 会话目录的标题、工作目录与最近活动，支持搜索与筛选；不解压、不迁移、不改写官方数据。</p></div>
-      <div class="card"><h4><span class="dot"></span>健康诊断</h4><p>本地只读体检覆盖启动资产、锁文件来源、overlay patch（多文档 / 重复条目）与中断维护；一键修复孤立的文档分隔符，日志导出自动脱敏。</p></div>
+    <h2 class="serif">它帮你做什么</h2>
+    <p class="lead">DSH 本体是一套命令行工具；dsh++ 把日常操作收进桌面窗口，并替你盯住容易出错的环节。</p>
+    <div class="caps">
+      <div class="cap"><div class="ico">🚀</div><h3>启动与远程</h3><p>一键启动、停止、重启 DSH Web；手机经同一 Wi-Fi、Tailscale 或自定义域名访问，地址一键复制。</p></div>
+      <div class="cap"><div class="ico">🧩</div><h3>插件更新，看得懂</h3><p>为什么装不上、声明是什么、怎么解除，提示都说清楚；「升级到最新」可选固定版本或浮动声明。</p></div>
+      <div class="cap"><div class="ico">🛡️</div><h3>防不兼容</h3><p>更新前核对插件的内核要求，版本不够先拦截并给指引——不再装完才发现打不开。</p></div>
+      <div class="cap"><div class="ico">🖥️</div><h3>官方桌面版</h3><p>启停官方桌面壳、同步 Web 配置、走官方通道更新；两端插件版本一页对照。</p></div>
+      <div class="cap"><div class="ico">⬆️</div><h3>内核升级</h3><p>正式 / RC / 预览三通道，升级前自动备份，失败一键回滚，官方伴随包自动同步。</p></div>
+      <div class="cap"><div class="ico">🩺</div><h3>健康诊断</h3><p>配置损坏、来源异常、中断任务提前发现；overlay 配置坏了，一键修复。</p></div>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h3 class="serif">快速上手</h3>
+    <h2 class="serif">界面一览</h2>
+    <p class="lead">深浅双主题 · 会话截图均为演示数据</p>
+    <div class="strip">
+      <figure><img src="screenshots/plugins-light.png" alt="插件管理" /><figcaption>插件管理 · 声明与内核要求</figcaption></figure>
+      <figure><img src="screenshots/desktop-light.png" alt="官方桌面版" /><figcaption>官方桌面版管理</figcaption></figure>
+      <figure><img src="screenshots/sessions-dark.png" alt="会话记录" /><figcaption>会话总览（深色）</figcaption></figure>
+      <figure><img src="screenshots/health-light.png" alt="健康检查" /><figcaption>健康检查与修复</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <h2 class="serif">三步开始</h2>
     <p class="lead">需要 Windows 10/11、.NET 8 Desktop Runtime、Node.js 与已安装的 DSH</p>
     <div class="steps">
-      <div class="step"><div class="n"></div><div><b>解压发布包</b><span>完整解压 win-x64.zip，保留 EXE、compat-polyfill.js 和 scripts 目录，放入固定位置运行。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>确认路径并启动</b><span>在「数据与路径」确认 DSH 安装目录与数据目录，从「服务总览」启动，等待"运行中"。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>打开 DSH</b><span>点击「打开 DSH」进入 localhost；需要远程时在「远程连接」选择局域网、Tailscale 或域名。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>解压发布包</b><span>完整解压 win-x64.zip，保留 EXE、compat-polyfill.js 与 scripts 目录，放入固定位置。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>确认路径并启动</b><span>在「数据与路径」确认 DSH 安装目录，从「服务总览」启动，等待"运行中"。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>打开 DSH</b><span>点「打开 DSH」进入 localhost；手机访问在「远程连接」选择局域网、Tailscale 或域名。</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2 class="serif">常见问题</h2>
+    <p class="lead">更新与兼容的大多数疑问，答案都在界面提示里</p>
+    <div class="faq">
+      <details><summary>提示「有新版（声明 范围外）」或「固定 版本」，怎么升级？</summary><p>这是依赖声明把新版挡住了。选中插件点「升级到最新」，可选固定到新版或改为 <code>^</code> 浮动声明（之后普通更新即可继续升级）。0.x 包的 <code>^</code> 只跟随同一小版本。</p></details>
+      <details><summary>提示「需内核 ≥x.y.z」？</summary><p>插件要求更高的 DSH 内核。先在「版本与备份」升级内核（正式 / RC / 预览），再回来更新插件。</p></details>
+      <details><summary>官方桌面版打不开？</summary><p>多数是 cordis.patch.yml 被官方插件安装器写坏。到「诊断与日志」重新检查，按提示点「修复 overlay patch」即可（自动备份原文件）。</p></details>
+      <details><summary>Web 和桌面版能同时开吗？</summary><p>可以。任务看板有单写锁，同时运行时后启动一端的看板会降级；聊天、会话与插件界面不受影响。</p></details>
+      <details><summary>会话数据会被修改吗？</summary><p>不会。「会话记录」页只读列出标题与活动时间，不解压、不迁移、不改写任何官方数据。</p></details>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h3 class="serif">从源码构建</h3>
+    <h2 class="serif">从源码构建</h2>
     <p class="lead">.NET 8 SDK</p>
     <pre>git clone https://github.com/Jensen-Yao/dsh-plus-plus
 cd dsh-plus-plus
-dotnet build dsh-plus-plus.csproj -c Release
 dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
 .\publish\dsh-plus-plus.exe --self-test</pre>
   </div>
@@ -201,8 +251,11 @@ dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
 
 <footer>
   <div class="wrap">
-    MIT License · <a href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">变更记录</a> ·
-    dsh++ 是社区控制台，与 DeepSeek 官方无关联 · 页面截图为 3.7.1 渲染图，会话均为演示数据
+    <img src="logo-rainbow.png" alt="" style="width:44px;height:auto;vertical-align:middle;margin-bottom:10px" /><br/>
+    dsh++ 是社区项目，与 DeepSeek 官方无关联 · MIT License<br/>
+    <a href="https://github.com/Jensen-Yao/dsh-plus-plus">GitHub</a> ·
+    <a href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">变更记录</a> ·
+    <a href="https://github.com/Jensen-Yao/dsh-plus-plus#readme">完整文档</a>
   </div>
 </footer>
 
