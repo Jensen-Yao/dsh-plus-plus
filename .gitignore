@@ -19,3 +19,9 @@ icon-preview.png
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 内部交接文档（含本机路径，不入库）
+HANDOFF.md
+# 图标生成中间产物
+docs/icon-src.png
+Assets/appicon-preview.png
