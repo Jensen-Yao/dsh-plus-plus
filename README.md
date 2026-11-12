@@ -1,10 +1,29 @@
+<div align="center">
+
 # dsh++
 
-DeepSeek Harness 的 Windows 桌面控制台。3.7 在插件更新前核对 DSH 内核要求、支持 next（RC）内核通道，并检查 / 修复 overlay patch 配置；3.6 让「升级到最新」可选固定或浮动声明并讲清版本被声明挡住的原因；3.5 增加插件“升级到最新”通道与官方桌面版更新管理，继续保留会话记录、玻璃材质、健康检查和 Web / 桌面插件对照。
+**DeepSeek Harness 的 Windows 桌面控制台**
+
+服务生命周期 · 插件维护 · 官方桌面版管理 · 健康诊断
+
+[![Release](https://img.shields.io/badge/release-v3.7.1-D97757?style=flat-square&labelColor=3D3929)](https://github.com/Jensen-Yao/dsh-plus-plus/releases)
+[![.NET](https://img.shields.io/badge/.NET-8.0_WPF-788C5D?style=flat-square&labelColor=3D3929)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-8F8B7E?style=flat-square&labelColor=3D3929)]()
+[![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.2%20verified-D5A144?style=flat-square&labelColor=3D3929)]()
+[![License](https://img.shields.io/badge/license-MIT-6E6A5E?style=flat-square&labelColor=3D3929)](LICENSE)
+
+[下载最新版](https://github.com/Jensen-Yao/dsh-plus-plus/releases/latest) · [快速开始](#使用) · [常见问题](#诊断)
+
+</div>
+
+---
 
 ![dsh++ 插件管理](docs/screenshots/plugins-light.png)
 ![dsh++ 桌面版管理](docs/screenshots/desktop-light.png)
 ![dsh++ 会话记录（演示数据）](docs/screenshots/sessions-dark.png)
+![dsh++ 服务总览（深色）](docs/screenshots/main-dark.png)
+
+> 3.7 在插件更新前核对 DSH 内核要求、支持 next（RC）内核通道，并检查 / 修复 overlay patch 配置；3.6 让「升级到最新」可选固定或浮动声明并讲清版本被声明挡住的原因；3.5 增加插件“升级到最新”通道与官方桌面版更新管理。会话截图均为演示数据。
 
 ## 使用
 
