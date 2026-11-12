@@ -59,6 +59,24 @@ public partial class MainWindow
     async void BtnHealthCheck_Click(object sender, RoutedEventArgs e) => await RefreshHealthAsync();
     void HealthFilter_Changed(object sender, RoutedEventArgs e) => FilterHealth();
 
+    async void BtnHealthRepairPatch_Click(object sender, RoutedEventArgs e)
+    {
+        var candidates = upd.Profiles().Where(profile => PatchOverlay.ReadStatus(profile.Dir).Level == "错误").ToList();
+        if (candidates.Count == 0) { HealthSummaryText.Text = "没有检测到无法解析的 overlay patch；重复条目请用「从 Web 同步配置」或手动编辑。"; return; }
+        if (MessageBox.Show(this, "将移除以下 profile 的 cordis.patch.yml 中孤立的 --- / ... 文档分隔符（先自动备份）：\n"
+                + string.Join("\n", candidates.Select(profile => "· " + profile.Name)) + "\n\n服务不重启，修改在下一次启动生效。继续？",
+                "修复 overlay patch", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        var messages = new List<string>();
+        foreach (var profile in candidates)
+        {
+            var repair = PatchOverlay.Repair(profile.Dir);
+            messages.Add((repair.ok ? "已修复 " : "未修复 ") + profile.Name + "：" + repair.message.Split('\n')[0]);
+            if (repair.ok) Log(repair.message);
+        }
+        HealthSummaryText.Text = string.Join(" · ", messages);
+        await RefreshHealthAsync();
+    }
+
     void BtnHealthExport_Click(object sender, RoutedEventArgs e)
     {
         if (healthReport == null) return;

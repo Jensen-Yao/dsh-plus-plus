@@ -6,13 +6,13 @@
 
 - 项目：`F:\dh talk\dsh-plus-plus`
 - Git 分支：`main`
-- Git HEAD：`5c03f0d Check plugin kernel requirements before updating and add the next runtime channel`
+- Git HEAD：见 git log（3.7.1 overlay patch 检查与修复已提交）
 - 工作区：干净
-- 当前代码版本：`3.7.0`
+- 当前代码版本：`3.7.1`
 - GitHub：`https://github.com/Jensen-Yao/dsh-plus-plus`
 - 最新 Release：`v3.5.5`（3.6.0 / 3.7.0 尚未推送 / 发布）
 - 固定安装入口：`F:\SelfSoftware\dsh++\dsh-plus-plus.exe`
-- 当前运行版本：`3.7.0.0`（旧版备份：`backups\dsh-plus-plus-3.5.5.exe`、`backups\dsh-plus-plus-3.6.0.exe`）
+- 当前运行版本：`3.7.1.0`（旧版备份：`backups\dsh-plus-plus-3.5.5.exe` ~ `3.7.0.exe`）
 
 ## dsh++ 已完成能力
 
@@ -20,6 +20,7 @@
 - 管理官方桌面版，支持启动、停止、重启、Web 配置同步和启动验证。
 - 插件清单展示、Profile 筛选、来源诊断、锁文件检查、聚合子包发现和恢复点。
 - 插件更新支持声明内更新、指定版本和“升级到最新”。
+- 3.7.1：健康检查覆盖全部 profile 的 cordis.patch.yml（多文档/语法损坏=错误、重复条目 id=提醒）；诊断页「修复 overlay patch」移除孤立 `---`/`...` 分隔符（先备份，仍不可解析则不动文件）。桌面 dsh-claude-style 安装事故的两项遗留（多文档崩溃、重复条目）已分别修复与清理。
 - 3.7.0：插件检查与更新前核对目标版本的 DSH 内核要求（peerDependencies / dsh.engines.dsh），不满足时状态、详情、提示与确认框均给出范围与当前内核，安装前硬性拦截（不停服、不改依赖）；内核通道新增 next（RC）与精确版本，CLI 新增 `--runtime-update`。
 - 3.6.0：“升级到最新”可选固定精确版本或浮动 `^` 声明（默认浮动，0.x 包提示小版本锁定）；状态区分“固定”与“范围外”并带声明原文；悬停详情与选中提示解释声明内最高、远端 latest 及解除方法；帮助新增“声明与版本”一节。
 - 本地 `link:` / `file:` 插件不会被批量更新静默替换。
@@ -45,14 +46,14 @@
 
 ## 验证结果
 
-- dsh++ 自检（3.7.0）：`109` 项通过（104 + 5 项内核要求新用例）。注意：`shortened redacted composition errors do not overflow` 一例偶发时序失败（取消窗口敏感），重跑即过，待单独修复。
+- dsh++ 自检（3.7.1）：`115` 项通过（109 + 6 项 overlay 用例）。注意：`shortened redacted composition errors do not overflow` 一例偶发时序失败（取消窗口敏感），重跑即过，待单独修复。
 - 内核升级（2026-11-13）：`--runtime-update next` 将 DSH 内核 `0.2.2-rc.1` → `0.2.2-rc.2`，组合检查通过，备份保留；升级后 web 服务正常（页面 HTTP 401 为无凭据 curl 的预期认证响应，bridge `/ext/bridge-config` HTTP 200）。
 - Web 插件检查（内核 rc.2 后）：`39` 项，`0` 失败，`0` 来源异常；`@linxin666/dsh-web-all 0.4.18` 内核要求已满足，不再拦截。
 - web profile 的 `@deepseek-ai/dsh-client-store` / `dsh-client-ui-primitives` 声明保留 `0.2.2-rc.1`：内核 rc.2 安装目录未携带这两个包（伴随包同步只采用内核目录实际提供的版本），npm next 通道有 rc.2，如需对齐可手动处理——不是故障。
 - 待处理更新（用户自行决定）：`dsh-context 0.83.1 → 0.84.0`（^0.83.0 范围外，可「升级到最新」）；`dsh-web-billing` Git HEAD 有新提交待同步。
 - dsh++ 健康检查：`0 错误`。
 - render-check（3.6.0）：`70` 张，`0` 按钮裁切，输出在 `F:\temp\dshpp-ui-360`。
-- 官方桌面版：`0.2.2-rc.1`，窗口和进程验证通过（官方更新通道未发布 rc.2）。
+- 官方桌面版：`0.2.2-rc.1`，2026-11-13 修复 cordis.patch.yml 后启动验证通过，运行中（官方更新通道未发布 rc.2）。
 
 ## 重要路径
 
@@ -66,6 +67,8 @@
 - Model palette 源码：`F:\\dsh-model-palette`
 
 ## 已知限制
+
+- 官方桌面端的插件管理器可能把 `profiles/desktop/cordis.patch.yml` 追加成多文档 YAML 或产生重复条目（2026-11-12 安装 dsh-claude-style 事故）。多文档会让桌面 Host 启动 fatal；2026-11-13 已修复文件并用「从 Web 同步配置」清理重复条目（原文件备份 `cordis.patch.yml.bak-20261113-004917`）。3.7.1 起健康检查与「修复 overlay patch」已覆盖此类损坏。
 
 - DeepSeek 模型额度耗尽时，Side Chat 的摘要或 handoff 会返回 429；这属于模型额度，不是插件加载错误。
 - `dsh-model-palette` 和 Browser bridge 是本地来源，npm registry 没有对应发布包，控制台会显示“npm 未发布 / 本地维护”。

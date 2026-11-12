@@ -63,6 +63,26 @@ public static partial class SelfCheck
             && UpdateService.SatisfiesRange("2.0.0", "1.x") == false && UpdateService.SatisfiesRange("1.9.9", "1.x") == true);
         Check("unparsable kernel ranges stay unknown instead of blocking", UpdateService.SatisfiesRange("1.0.0", "workspace:^") == null
             && UpdateService.SatisfiesRange("1.0.0", "") == true);
+        var overlayFixture = Path.Combine(Path.GetTempPath(), "dshpp-overlay-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(overlayFixture);
+            File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: a\n  disabled: true\n- id: b\n  name: pkg\n");
+            Check("single-document overlay patch passes", PatchOverlay.ReadStatus(overlayFixture).Level == "通过");
+            File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: a\n  disabled: true\n...\n- id: b\n  name: pkg\n");
+            Check("stray document separator is reported as an error", PatchOverlay.ReadStatus(overlayFixture).Level == "错误");
+            var overlayRepair = PatchOverlay.Repair(overlayFixture);
+            Check("overlay repair merges stray separators with a backup", overlayRepair.ok
+                && PatchOverlay.ReadStatus(overlayFixture).Level == "通过"
+                && Directory.GetFiles(overlayFixture, "cordis.patch.yml.bak-*").Length == 1);
+            File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: a\n- id: a\n");
+            Check("duplicate overlay ids are flagged", PatchOverlay.ReadStatus(overlayFixture).Level == "注意");
+            Check("overlay repair leaves files without separators untouched", !PatchOverlay.Repair(overlayFixture).ok);
+            File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: [broken\n");
+            Check("overlay repair keeps unparsable files unchanged", !PatchOverlay.Repair(overlayFixture).ok
+                && File.ReadAllText(PatchOverlay.PathOf(overlayFixture)) == "- id: [broken\n");
+        }
+        finally { Directory.Delete(overlayFixture, true); }
         var kernelBlocked = new PluginItem { Name = "dsh-web-all", Spec = "^0.4.16", Installed = "0.4.16", TargetVersion = "0.4.18", Latest = "0.4.18",
             KernelVersion = "0.2.2-rc.1", TargetKernelRange = ">=0.2.2-rc.2", TargetKernelSatisfied = false };
         Check("kernel requirement surfaces in detail and guidance", kernelBlocked.KernelBlocked

@@ -84,6 +84,8 @@ public static class HealthChecks
         {
             var lockFile = PluginLock.Read(profile.Dir);
             if (lockFile.Error.Length > 0) Add("错误", profile.Name, "锁文件无法解析", lockFile.Error);
+            var overlay = PatchOverlay.ReadStatus(profile.Dir);
+            Add(overlay.Level, profile.Name, overlay.Title, overlay.Detail);
             var artifacts = new List<HealthFinding>();
             foreach (var plugin in profile.Plugins)
             {
