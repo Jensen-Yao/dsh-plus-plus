@@ -39,12 +39,20 @@ public class PluginItem
     public bool CanAdvance => !IsIndirect && !IsCore && HasUpdate && (!IsLocal || RemoteIdentityVerified)
         && UpdateService.IsExactVersion((Latest ?? "").TrimStart('v', 'V'));
     public string AdvanceTarget => IsGit ? Spec.Split('#')[0] + "#" + Latest : Latest;
+    public bool IsPinned => !IsLocal && !IsGit && !IsIndirect && !UpdateService.SpecUpdatable(Spec);
+    public bool DeclarationRestricted => !IsLocal && !IsGit && !IsIndirect && !IsPinned && RemoteChecked
+        && UpdateService.IsNewer(Latest, Installed) && !UpdateService.IsNewer(TargetVersion, Installed);
+    bool RemoteChecked => Latest is not ("未检查" or "检查失败" or "npm 未发布");
     public string Policy => IsIndirect ? "随入口维护" : IsLocal ? "本地维护" : IsCore ? "跟随内核" : CanUpdate ? "跟随声明" : "固定版本";
     public string Status => !string.IsNullOrEmpty(SourceIssue) ? "来源偏差" : !string.IsNullOrEmpty(CheckError) ? "检查失败"
         : !string.IsNullOrEmpty(Detail) ? Detail : string.IsNullOrEmpty(Installed) ? "未安装" : Policy;
     public string Description => $"{Name}\n声明：{Spec}\n实际来源：{ResolvedSource}\n{SourceIssue}\n{CheckError}"
         + (IsIndirect ? "\n更新入口：" + OwnerName : "")
-        + (CheckedAt.HasValue ? $"\n检查时间：{CheckedAt.Value.ToLocalTime():MM-dd HH:mm:ss}" : "\n尚未检查远端");
+        + (CheckedAt.HasValue ? $"\n检查时间：{CheckedAt.Value.ToLocalTime():MM-dd HH:mm:ss}" : "\n尚未检查远端")
+        + (RemoteChecked && UpdateService.IsNewer(Latest, Installed) ? "\n远端最新：" + Latest : "")
+        + (!IsLocal && !IsGit && !string.IsNullOrEmpty(TargetVersion) ? "\n声明内最高：" + TargetVersion : "")
+        + (DeclarationRestricted ? "\n远端新版超出声明范围，普通更新只安装声明范围内版本；选中后用「升级到最新」切换（可选固定或浮动声明），或用「指定版本」修改声明。" : "")
+        + (IsPinned && RemoteChecked && UpdateService.IsNewer(Latest, Installed) && !IsIndirect ? "\n版本已固定，不随批量更新变化；选中后用「升级到最新」改用远端新版，或用「指定版本」改成范围声明。" : "");
 
     internal void CopyCheckFrom(PluginItem previous)
     {
@@ -262,5 +270,12 @@ public partial class UpdateService
             return marker < 0 || !Regex.IsMatch(value[(marker + 1)..], @"^(?:[0-9a-fA-F]{7,40}|v?\d+(?:\.\d+)+.*)$");
         }
         return !IsExactVersion(value.StartsWith("npm:", StringComparison.OrdinalIgnoreCase) ? NpmReference("", value).Spec : value);
+    }
+
+    public static string FloatingSpec(string spec, string version)
+    {
+        if (spec.StartsWith("npm:", StringComparison.OrdinalIgnoreCase))
+            return "npm:" + NpmReference("", spec).Name + "@^" + version;
+        return "^" + version;
     }
 }

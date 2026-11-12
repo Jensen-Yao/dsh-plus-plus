@@ -426,6 +426,8 @@ public partial class MainWindow : Window
             PluginDetailText.ToolTip = CommandRunner.Redact(plugin.Description);
             PluginHintText.Text = plugin.SourceIssue.Length > 0 ? plugin.SourceIssue : plugin.CheckError.Length > 0 ? "检查失败，悬停查看详情。"
                 : plugin.IsIndirect ? "由所属入口安装，不单独提升为直接依赖。"
+                : plugin.DeclarationRestricted ? $"声明 {plugin.Spec} 内最高可装 {plugin.TargetVersion}，远端 latest {plugin.Latest} 超出声明，普通更新不会安装。选中后用「升级到最新」切换为固定或浮动声明。"
+                : plugin.IsPinned && plugin.HasUpdate ? $"声明固定在 {plugin.Spec}；远端 latest {plugin.Latest}。选中后用「升级到最新」改用新版，或用「指定版本」改成范围声明。"
                 : plugin.CanAdvance ? $"远端最新 {plugin.AdvanceTarget}；「升级到最新」会显式切换声明并保留回滚点。"
                 : "本地链接、固定版本和声明外版本可通过「升级到最新」或「指定版本」更改。";
             BtnPluginTarget.IsEnabled = !busy && !plugin.IsIndirect && !plugin.IsLocal && !plugin.IsCore;
@@ -519,6 +521,13 @@ public partial class MainWindow : Window
     {
         if (PluginGrid.SelectedItem is not PluginItem plugin || !plugin.CanAdvance) return;
         var target = plugin.AdvanceTarget;
+        if (!plugin.IsGit)
+        {
+            var choice = new AdvanceSpecDialog(plugin.Name, plugin.Installed, plugin.Latest, target,
+                UpdateService.FloatingSpec(plugin.Spec, plugin.Latest)) { Owner = this };
+            if (choice.ShowDialog() != true) return;
+            target = choice.ChosenSpec;
+        }
         if (!ConfirmMaintenance("升级插件到远端最新", new[]
         {
             new PlannedChange(plugin.Profile + " / " + plugin.Name, $"{plugin.Installed} · {plugin.Spec} → {target}"),

@@ -62,6 +62,11 @@ public static class RenderCheck
                 reports.Add(Capture((FrameworkElement)preview.Content, directory, name));
                 preview.Close();
             }
+            var advance = new AdvanceSpecDialog("dsh-web-all", "0.4.16", "0.5.0", "0.5.0", "^0.5.0") { Owner = window, Width = 560 };
+            advance.Show();
+            await advance.Dispatcher.InvokeAsync(() => advance.UpdateLayout(), DispatcherPriority.ApplicationIdle);
+            reports.Add(Capture((FrameworkElement)advance.Content, directory, $"{theme}-advance.png"));
+            advance.Close();
         }
         var brand = (RainbowBrand)window.FindName("BrandMark");
         brand.SetMotion(true);

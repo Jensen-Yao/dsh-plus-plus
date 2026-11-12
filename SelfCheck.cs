@@ -44,6 +44,17 @@ public static partial class SelfCheck
         Check("unverified npm same-name package cannot replace a local plugin", !impersonatedLocal.CanAdvance);
         var pinnedAdvance = new PluginItem { Name = "palette", Spec = "github:owner/repo#v0.1.0", Installed = "v0.1.0", Latest = "v0.1.2" };
         Check("pinned Git tag advances to a newer tag", pinnedAdvance.CanAdvance && pinnedAdvance.AdvanceTarget == "github:owner/repo#v0.1.2");
+        var rangeLimited = new PluginItem { Name = "dsh-web-all", Spec = "^0.4.16", Installed = "0.4.16", Latest = "0.5.0", TargetVersion = "0.4.16" };
+        Check("range-limited update exposes target, latest, and guidance", rangeLimited.DeclarationRestricted
+            && rangeLimited.Description.Contains("声明内最高：0.4.16") && rangeLimited.Description.Contains("远端最新：0.5.0")
+            && rangeLimited.Description.Contains("「升级到最新」"));
+        var versionPinned = new PluginItem { Name = "modlens", Spec = "3.27.3", Installed = "3.27.3", Latest = "3.28.0", TargetVersion = "3.27.3" };
+        Check("pinned npm version is fixed, not range-limited", versionPinned.IsPinned && !versionPinned.DeclarationRestricted
+            && versionPinned.Description.Contains("版本已固定"));
+        Check("git tag pin is not treated as npm pin", !pinnedAdvance.IsPinned);
+        Check("floating declaration is derived from the remote version", UpdateService.FloatingSpec("^0.4.16", "0.5.0") == "^0.5.0"
+            && UpdateService.FloatingSpec("npm:alias@^1.0.0", "1.2.0") == "npm:alias@^1.2.0");
+        Check("zero-major floating ranges carry a scope note", AdvanceSpecDialog.RangeNote("0.5.0").Length > 0 && AdvanceSpecDialog.RangeNote("v1.2.0").Length == 0);
         var feedConfig = DesktopService.ReadDesktopUpdateConfig("provider: generic\nurl: https://download.deepseek.com/dsh-desk/feeds/win-x64/\nchannel: nightly\n");
         Check("desktop feed URL follows the configured channel", feedConfig.Url == "https://download.deepseek.com/dsh-desk/feeds/win-x64/" && feedConfig.Channel == "nightly");
         var feed = DesktopService.ReadDesktopUpdateFeed("version: 0.2.2-rc.1\nfiles:\n  - url: https://download.deepseek.com/dsh-desk/bin/win-x64/app.exe\n    size: 123\n    sha512: abcd\nreleaseDate: '2026-11-04T09:31:49.677Z'\n");

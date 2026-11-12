@@ -206,7 +206,8 @@ public partial class UpdateService
                         : await QueryNpmVersionAsync(plugin.Name, plugin.Spec, plugin.ProfileDir, token);
                     plugin.Detail = IsNewer(plugin.TargetVersion, plugin.Installed)
                         ? plugin.IsIndirect ? "有新版；由入口维护" : "声明内可更新"
-                        : IsNewer(plugin.Latest, plugin.Installed) ? "有新版（声明限制）"
+                        : IsNewer(plugin.Latest, plugin.Installed)
+                            ? plugin.IsPinned ? "有新版（固定 " + plugin.Spec + "）" : "有新版（" + plugin.Spec + " 范围外）"
                         : plugin.Latest == plugin.Installed ? "当前已是最新" : "当前版本高于 latest";
                 }
             }
