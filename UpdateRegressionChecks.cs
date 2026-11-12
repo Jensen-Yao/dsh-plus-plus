@@ -151,5 +151,13 @@ public static partial class SelfCheck
             { "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "range-plugin", "git-plugin" }));
         check("desktop sync removes web-only remote tunnel patch but keeps user patches",
             !syncPlan.Patch.Contains("web-ui-remote-web-ui") && syncPlan.Patch.Contains("ui-theme"));
+        var kernelPlan = UpdateService.BuildDesktopSyncPlan(syncWeb, syncDesktop,
+            new Dictionary<string, string> { ["range-plugin"] = "1.1.0" });
+        var kernelDependencies = kernelPlan.Manifest["dependencies"]!.AsObject();
+        check("desktop sync honors the desktop runtime kernel ceiling over the web installed version",
+            kernelDependencies["range-plugin"]!.GetValue<string>() == "1.1.0"
+            && kernelPlan.DependencyChanges.Any(change => change.Name == "range-plugin" && change.Web.Contains("桌面内核兼容上限")));
+        check("desktop sync leaves local and git declarations outside kernel overrides",
+            kernelDependencies["git-plugin"]!.GetValue<string>() == "github:owner/repo#v1.0.0");
     }
 }

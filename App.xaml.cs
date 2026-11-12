@@ -57,7 +57,11 @@ public partial class App : Application
             var config = AppConfig.Load();
             using var service = new DshService(config);
             var desktop = new DesktopService(config, service);
-            var updates = new UpdateService(config, service, desktop);
+            var syncLogPath = System.IO.Path.Combine(AppConfig.ConfigDir, "desktop-sync-log.txt");
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.Delete(syncLogPath);
+            var updates = new UpdateService(config, service, desktop,
+                message => System.IO.File.AppendAllText(syncLogPath, message + Environment.NewLine));
             var result = System.Threading.Tasks.Task.Run(async () => e.Args[1] switch
             {
                 "start" => await desktop.StartAsync(),
