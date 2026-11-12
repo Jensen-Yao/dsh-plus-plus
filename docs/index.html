@@ -6,14 +6,14 @@
 <title>dsh++ — DeepSeek Harness 桌面控制台</title>
 <link rel="icon" type="image/png" href="icon.png" />
 <meta property="og:title" content="dsh++ — DeepSeek Harness 桌面控制台" />
-<meta property="og:description" content="把 dsh web 从命令行搬进桌面应用，并集成可选的 Freebuff Docker 服务：一键启停、手机同屏、Tailscale、存储位置一站式管理。" />
+<meta property="og:description" content="Web 与官方桌面版生命周期、插件维护、会话总览与健康诊断，收进一个安静的 Windows 窗口。" />
 <meta property="og:image" content="https://jensen-yao.github.io/dsh-plus-plus/icon.png" />
 <style>
   :root {
-    --bg: #1c1c1e; --bg2: #161617; --surface: #2c2c2e;
-    --text: #f5f5f7; --text2: #a1a1a6; --text3: #6c6c70;
-    --primary: #0a84ff; --primary-hover: #2a98ff;
-    --green: #30d158; --border: #3a3a3d; --hero-bg: #1e2f45; --hero-border: #34547a;
+    --bg: #F0EEE6; --bg2: #ECEAE1; --surface: #FAF9F5;
+    --text: #3D3929; --text2: #6E6A5E; --text3: #8F8B7E;
+    --primary: #C96442; --primary-hover: #D97757;
+    --green: #788C5D; --border: #E3DFD3; --hero-bg: #F5EFE2; --hero-border: #E6DCC6;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -21,6 +21,7 @@
     font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
     line-height: 1.65; -webkit-font-smoothing: antialiased;
   }
+  .serif { font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif; }
   .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
   header {
     background: var(--bg2); border-bottom: 1px solid var(--border);
@@ -38,16 +39,18 @@
   header .gh a {
     color: var(--text2); text-decoration: none; font-size: 13px;
     border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px;
+    background: var(--surface);
   }
   header .gh a:hover { color: var(--primary); border-color: var(--primary); }
   .hero { padding: 64px 0 40px; text-align: center; }
-  .hero h2 { font-size: 40px; font-weight: 800; letter-spacing: .5px; }
+  .hero h2 { font-size: 40px; font-weight: 700; letter-spacing: .5px; }
   .hero h2 span { color: var(--primary); }
   .hero p { color: var(--text2); font-size: 17px; max-width: 680px; margin: 14px auto 0; }
   .hero .tags { margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   .hero .tags span {
     font-size: 12.5px; color: var(--text2);
     border: 1px solid var(--border); border-radius: 999px; padding: 4px 14px;
+    background: var(--surface);
   }
   .cta { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .cta a {
@@ -55,7 +58,7 @@
   }
   .cta .primary { background: var(--primary); color: #fff; }
   .cta .primary:hover { background: var(--primary-hover); }
-  .cta .ghost { color: var(--text2); border: 1px solid var(--border); }
+  .cta .ghost { color: var(--text2); border: 1px solid var(--border); background: var(--surface); }
   .cta .ghost:hover { color: var(--text); border-color: var(--text3); }
   .shots { padding: 30px 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .shots figure {
@@ -64,7 +67,7 @@
   }
   .shots img { width: 100%; display: block; }
   .shots figcaption { font-size: 13px; color: var(--text2); text-align: center; padding: 10px; }
-  @media (max-width: 860px) { .shots { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .shots { grid-template-columns: 1fr; } .hero h2 { font-size: 30px; } }
   section { padding: 44px 0; }
   section h3 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
   section .lead { color: var(--text2); margin-bottom: 26px; }
@@ -92,11 +95,11 @@
   pre {
     background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
     padding: 16px 18px; overflow-x: auto; font-size: 13.5px;
-    font-family: "Cascadia Code", Consolas, monospace; color: #7dd3fc;
+    font-family: "Cascadia Code", Consolas, monospace; color: var(--primary);
   }
   code.inline {
     background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
-    padding: 1px 7px; font-family: Consolas, monospace; font-size: 13px; color: #7dd3fc;
+    padding: 1px 7px; font-family: Consolas, monospace; font-size: 13px; color: var(--primary);
   }
   footer {
     margin-top: 30px; border-top: 1px solid var(--border);
@@ -112,7 +115,7 @@
   <div class="wrap">
     <div class="logo">++</div>
     <div>
-      <h1>dsh++</h1>
+      <h1 class="serif">dsh++</h1>
       <div class="sub">DeepSeek Harness 桌面控制台 · dsh-plugin</div>
     </div>
     <div class="gh"><a href="https://github.com/Jensen-Yao/dsh-plus-plus">GitHub 仓库</a></div>
@@ -121,14 +124,14 @@
 
 <div class="hero">
   <div class="wrap">
-    <h2>让手机打开<span>和电脑一样</span>的界面</h2>
-    <p>dsh++ 3.4 集中管理 Web 服务、官方桌面版、插件、会话和恢复点。新增会话记录栏、官方徽标彩虹流动、液体玻璃、本地健康检查和两端插件版本对照。</p>
+    <h2 class="serif">dsh 的版本、插件与两端运行，<span>一眼看清</span></h2>
+    <p>dsh++ 3.7 集中管理 Web 服务与官方桌面版的生命周期、插件更新与恢复点。更新前核对 DSH 内核要求，「升级到最新」可选固定或浮动声明，健康诊断能发现并修复损坏的 overlay 配置。</p>
     <div class="tags">
       <span>Windows 10/11</span><span>.NET 8 · WPF</span><span>深浅双主题</span>
-      <span>Tailscale</span><span>官方桌面版</span><span>插件管理</span><span>中断恢复</span><span>MIT</span>
+      <span>内核要求核对</span><span>插件维护</span><span>官方桌面版</span><span>健康诊断</span><span>MIT</span>
     </div>
     <div class="cta">
-      <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载最新版</a>
+      <a class="primary" href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">下载 v3.7.1</a>
       <a class="ghost" href="https://github.com/Jensen-Yao/dsh-plus-plus#readme">查看 README</a>
     </div>
   </div>
@@ -137,81 +140,69 @@
 <div class="wrap">
   <div class="shots">
     <figure>
-      <img src="screenshots/main-dark.png" alt="dsh++ 深色主题" />
-      <figcaption>深色主题</figcaption>
-    </figure>
-    <figure>
-      <img src="screenshots/main-light.png" alt="dsh++ 浅色主题" />
-      <figcaption>浅色主题</figcaption>
+      <img src="screenshots/plugins-light.png" alt="dsh++ 插件管理" />
+      <figcaption>插件管理 · 声明解析与内核要求核对</figcaption>
     </figure>
     <figure>
       <img src="screenshots/desktop-light.png" alt="dsh++ 官方桌面版管理页" />
-      <figcaption>官方桌面版管理</figcaption>
+      <figcaption>官方桌面版管理与两端插件对照</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/sessions-dark.png" alt="dsh++ 会话记录（演示数据）" />
+      <figcaption>会话总览（只读 · 演示数据）</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/main-light.png" alt="dsh++ 服务总览" />
+      <figcaption>服务总览</figcaption>
     </figure>
   </div>
 </div>
 
 <section>
   <div class="wrap">
-    <h3>功能</h3>
-    <p class="lead">一个窗口，管好 dsh 的全部日常操作</p>
+    <h3 class="serif">功能</h3>
+    <p class="lead">一个窗口，管好 dsh 的全部日常运维</p>
     <div class="grid">
-      <div class="card"><h4><span class="dot"></span>一键启停</h4><p>启动、停止与重启 dsh web，验证网页就绪。本机入口保持 localhost，远程入口绑定所选网卡的具体 IP。</p></div>
-      <div class="card"><h4><span class="dot"></span>官方桌面版</h4><p>管理 Electron 桌面壳进程、版本、日志和 desktop profile；可把 web 的社区插件与用户配置同步过去，并用官方桌面启动结果验证。</p></div>
-      <div class="card"><h4><span class="dot"></span>手机入口</h4><p>同一 Wi-Fi / 自定义域名 / Tailscale 三种方式，大字地址一键复制，附「缺什么点什么」检查清单。</p></div>
-      <div class="card"><h4><span class="dot"></span>Tailscale 集成</h4><p>登录 / 连接 / 断开 / 安装一体化，跨网络也完全实时，状态与 ts.net 域名实时显示。</p></div>
-      <div class="card"><h4><span class="dot"></span>存储位置管理</h4><p>settings / sessions / storages / profiles / skills / agent-presets 一页看清；技能与 MCP 位置一键直达，主目录可直接修改。</p></div>
-      <div class="card"><h4><span class="dot"></span>插件维护与恢复</h4><p>按来源、状态和 profile 筛选插件；精确版本与本地链接保留。维护前确认范围，记录阶段与结果，中断后可明确恢复。</p></div>
-      <div class="card"><h4><span class="dot"></span>兼容补丁自愈</h4><p>自动为网页入口注入 polyfill，旧手机浏览器也能用；npm 更新覆盖后自动重新注入。</p></div>
-      <div class="card"><h4><span class="dot"></span>Freebuff 独立组件</h4><p>不随 dsh++ 自动启动；在「Freebuff」页单独启停。连接信息默认隐藏，可显示或复制。</p></div>
+      <div class="card"><h4><span class="dot"></span>Web 生命周期</h4><p>启动、停止与重启 dsh web，验证网页就绪。本机入口保持 localhost，远程入口绑定所选网卡的具体 IP，进程替换后转发自动接续。</p></div>
+      <div class="card"><h4><span class="dot"></span>插件维护</h4><p>按来源、状态和 profile 筛选；普通更新只装声明内精确目标，「升级到最新」可选固定版本或浮动 ^ 声明，本地 link/file 不被静默替换。</p></div>
+      <div class="card"><h4><span class="dot"></span>内核要求核对</h4><p>检查与更新前读取目标版本的 DSH 内核要求（peerDependencies / engines），不满足时说明差距并先拦截，避免装上不兼容的插件。</p></div>
+      <div class="card"><h4><span class="dot"></span>官方桌面版</h4><p>管理 Electron 桌面壳进程、版本、日志和 desktop profile；可把 web 的社区插件与配置同步过去，官方 feed 更新经大小与 SHA-512 校验。</p></div>
+      <div class="card"><h4><span class="dot"></span>内核与恢复点</h4><p>DSH 内核支持 latest / next（RC）/ alpha 通道与精确版本；每次维护先保存恢复点，失败或中断后可核对恢复，不删除锁文件。</p></div>
+      <div class="card"><h4><span class="dot"></span>远程入口</h4><p>同一 Wi-Fi / 自定义域名 / Tailscale 三种方式，大字地址一键复制；远程请求保留来源标记，仍受 DSH 认证与配对控制。</p></div>
+      <div class="card"><h4><span class="dot"></span>会话总览</h4><p>只读列出官方 DSH 会话目录的标题、工作目录与最近活动，支持搜索与筛选；不解压、不迁移、不改写官方数据。</p></div>
+      <div class="card"><h4><span class="dot"></span>健康诊断</h4><p>本地只读体检覆盖启动资产、锁文件来源、overlay patch（多文档 / 重复条目）与中断维护；一键修复孤立的文档分隔符，日志导出自动脱敏。</p></div>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h3>快速上手</h3>
-    <p class="lead">需要已安装 DSH、Node.js 和 .NET 8 Desktop Runtime</p>
+    <h3 class="serif">快速上手</h3>
+    <p class="lead">需要 Windows 10/11、.NET 8 Desktop Runtime、Node.js 与已安装的 DSH</p>
     <div class="steps">
-      <div class="step"><div class="n"></div><div><b>确认安装</b><span>完整解压发布包，在「数据与路径」确认 DSH 安装目录和数据目录。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>启动服务</b><span>在「服务总览」启动，等待网页就绪后打开 DSH。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>远程连接（可选）</b><span>在「远程连接」选择连接方式，在「启动设置」关闭仅本机访问并重启。新配置默认要求远程配对。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>维护插件</b><span>在「插件管理」检查版本并勾选更新；维护记录与恢复点位于「版本与备份」。</span></div></div>
-      <div class="step"><div class="n"></div><div><b>桌面版（可选）</b><span>在「数据与路径」确认桌面安装目录，在「桌面版」启动、检查插件或从 Web 同步配置。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>解压发布包</b><span>完整解压 win-x64.zip，保留 EXE、compat-polyfill.js 和 scripts 目录，放入固定位置运行。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>确认路径并启动</b><span>在「数据与路径」确认 DSH 安装目录与数据目录，从「服务总览」启动，等待"运行中"。</span></div></div>
+      <div class="step"><div class="n"></div><div><b>打开 DSH</b><span>点击「打开 DSH」进入 localhost；需要远程时在「远程连接」选择局域网、Tailscale 或域名。</span></div></div>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h3>Freebuff 本地服务</h3>
-    <p class="lead">可选组件，不随 dsh++ 启动，需要时在「Freebuff」页单独启动 / 停止</p>
-<pre>Base URL: http://127.0.0.1:18080/v1
-API Key:  使用本机配置的值
-
-项目目录：F:\freebuffapi
-配置文件：F:\freebuffapi\.env</pre>
-    <p style="margin-top:14px;font-size:14px;color:var(--text2)">客户端 Provider 由你自行配置；修改端口或本地 Key 后，重启 Freebuff 服务即可。</p>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <h3>从源码构建</h3>
-    <p class="lead">Windows 10/11 + .NET 8 SDK，当前启动流程已在 DSH 0.2.1-rc.2 验证</p>
-<pre>git clone https://github.com/Jensen-Yao/dsh-plus-plus.git
+    <h3 class="serif">从源码构建</h3>
+    <p class="lead">.NET 8 SDK</p>
+    <pre>git clone https://github.com/Jensen-Yao/dsh-plus-plus
 cd dsh-plus-plus
+dotnet build dsh-plus-plus.csproj -c Release
 dotnet publish dsh-plus-plus.csproj -c Release -r win-x64 -o publish
-# 产物：完整 publish 目录，保留 EXE、compat-polyfill.js 与 scripts</pre>
-    <p style="margin-top:14px;font-size:14px;color:var(--text2)">无窗口自检：<code class="inline">dsh-plus-plus.exe --smoke</code>（诊断写到 %TEMP%\dsh-control-smoke.txt）</p>
+.\publish\dsh-plus-plus.exe --self-test</pre>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    dsh++ · DeepSeek Harness（dsh）桌面控制台 · dsh-plugin 生态 ·
-    <a href="https://github.com/Jensen-Yao/dsh-plus-plus">GitHub</a> ·
-    <a href="https://github.com/Jensen-Yao/dsh-plus-plus/blob/main/LICENSE">MIT License</a>
+    MIT License · <a href="https://github.com/Jensen-Yao/dsh-plus-plus/releases">变更记录</a> ·
+    dsh++ 是社区控制台，与 DeepSeek 官方无关联 · 页面截图为 3.7.1 渲染图，会话均为演示数据
   </div>
 </footer>
 
