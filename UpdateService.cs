@@ -27,6 +27,11 @@ public class PluginItem
     public string TargetCommit { get; set; } = "";
     public string CheckError { get; set; } = "";
     public bool RemoteIdentityVerified { get; set; }
+    public string KernelVersion { get; set; } = "";
+    public string TargetKernelRange { get; set; } = "";
+    public bool? TargetKernelSatisfied { get; set; }
+    public string LatestKernelRange { get; set; } = "";
+    public bool? LatestKernelSatisfied { get; set; }
     public DateTime? CheckedAt { get; set; }
     public bool IsIndirect => !string.IsNullOrEmpty(OwnerName);
     public bool HasUpdate => UpdateService.IsNewer(Latest, Installed)
@@ -42,6 +47,7 @@ public class PluginItem
     public bool IsPinned => !IsLocal && !IsGit && !IsIndirect && !UpdateService.SpecUpdatable(Spec);
     public bool DeclarationRestricted => !IsLocal && !IsGit && !IsIndirect && !IsPinned && RemoteChecked
         && UpdateService.IsNewer(Latest, Installed) && !UpdateService.IsNewer(TargetVersion, Installed);
+    public bool KernelBlocked => TargetKernelSatisfied == false || LatestKernelSatisfied == false;
     bool RemoteChecked => Latest is not ("未检查" or "检查失败" or "npm 未发布");
     public string Policy => IsIndirect ? "随入口维护" : IsLocal ? "本地维护" : IsCore ? "跟随内核" : CanUpdate ? "跟随声明" : "固定版本";
     public string Status => !string.IsNullOrEmpty(SourceIssue) ? "来源偏差" : !string.IsNullOrEmpty(CheckError) ? "检查失败"
@@ -51,6 +57,8 @@ public class PluginItem
         + (CheckedAt.HasValue ? $"\n检查时间：{CheckedAt.Value.ToLocalTime():MM-dd HH:mm:ss}" : "\n尚未检查远端")
         + (RemoteChecked && UpdateService.IsNewer(Latest, Installed) ? "\n远端最新：" + Latest : "")
         + (!IsLocal && !IsGit && !string.IsNullOrEmpty(TargetVersion) ? "\n声明内最高：" + TargetVersion : "")
+        + (TargetKernelSatisfied == false ? $"\n声明内目标 {TargetVersion} 要求内核 {TargetKernelRange}，当前内核 {KernelVersion}；先在「版本与备份」升级 DSH 内核再更新。" : "")
+        + (LatestKernelSatisfied == false ? $"\n远端最新 {Latest} 要求内核 {LatestKernelRange}，当前内核 {KernelVersion}；升级到最新前需先升级内核。" : "")
         + (DeclarationRestricted ? "\n远端新版超出声明范围，普通更新只安装声明范围内版本；选中后用「升级到最新」切换（可选固定或浮动声明），或用「指定版本」修改声明。" : "")
         + (IsPinned && RemoteChecked && UpdateService.IsNewer(Latest, Installed) && !IsIndirect ? "\n版本已固定，不随批量更新变化；选中后用「升级到最新」改用远端新版，或用「指定版本」改成范围声明。" : "");
 
@@ -63,6 +71,11 @@ public class PluginItem
         CheckedAt = previous.CheckedAt;
         CheckError = previous.CheckError;
         RemoteIdentityVerified = previous.RemoteIdentityVerified;
+        KernelVersion = previous.KernelVersion;
+        TargetKernelRange = previous.TargetKernelRange;
+        TargetKernelSatisfied = previous.TargetKernelSatisfied;
+        LatestKernelRange = previous.LatestKernelRange;
+        LatestKernelSatisfied = previous.LatestKernelSatisfied;
     }
 }
 
@@ -105,43 +118,150 @@ public partial class UpdateService
         { return ("", exception.Message); }
     }
 
-    public (string latest, string alpha, string err) RemoteDshVersions(CancellationToken cancellation = default)
+    public (string latest, string alpha, string next, string err) RemoteDshVersions(CancellationToken cancellation = default)
     {
         try
         {
             var start = CommandRunner.PackageManager("npm", new[] { "view", "@deepseek-ai/dsh", "dist-tags", "--json" }, cfg.DshAppDir);
             var result = Task.Run(() => CommandRunner.RunAsync(start, TimeSpan.FromSeconds(40), cancellation: cancellation)).GetAwaiter().GetResult();
-            if (!result.Ok) return ("", "", result.TimedOut ? "版本检查超时，可稍后重试。" : result.Output);
+            if (!result.Ok) return ("", "", "", result.TimedOut ? "版本检查超时，可稍后重试。" : result.Output);
             using var document = JsonDocument.Parse(result.StandardOutput);
             string Tag(string tag) => document.RootElement.TryGetProperty(tag, out var value) ? value.GetString() : "";
-            return (Tag("latest"), Tag("alpha") is { Length: > 0 } alpha ? alpha : Tag("next"), null);
+            return (Tag("latest"), Tag("alpha"), Tag("next"), null);
         }
-        catch (Exception exception) { return ("", "", exception.Message); }
+        catch (Exception exception) { return ("", "", "", exception.Message); }
     }
 
     public static bool IsNewer(string remote, string local)
+        => !string.IsNullOrWhiteSpace(remote) && !string.IsNullOrWhiteSpace(local) && CompareVersions(remote, local) > 0;
+
+    public static int CompareVersions(string left, string right)
     {
-        if (string.IsNullOrWhiteSpace(remote) || string.IsNullOrWhiteSpace(local)) return false;
-        static string Clean(string version) => version.Trim().TrimStart('v', 'V').Split('+')[0];
-        var remoteParts = Clean(remote).Split('-', 2);
-        var localParts = Clean(local).Split('-', 2);
-        if (!Version.TryParse(remoteParts[0], out var remoteCore) || !Version.TryParse(localParts[0], out var localCore)) return false;
-        var coreOrder = remoteCore.CompareTo(localCore);
-        if (coreOrder != 0) return coreOrder > 0;
-        if (remoteParts.Length != localParts.Length) return remoteParts.Length == 1;
-        if (remoteParts.Length == 1) return false;
-        var remotePre = remoteParts[1].Split('.');
-        var localPre = localParts[1].Split('.');
-        for (var index = 0; index < Math.Min(remotePre.Length, localPre.Length); index++)
+        static string Clean(string version) => (version ?? "").Trim().TrimStart('v', 'V').Split('+')[0];
+        var leftParts = Clean(left).Split('-', 2);
+        var rightParts = Clean(right).Split('-', 2);
+        if (!Version.TryParse(leftParts[0], out var leftCore) || !Version.TryParse(rightParts[0], out var rightCore)) return 0;
+        var coreOrder = leftCore.CompareTo(rightCore);
+        if (coreOrder != 0) return coreOrder;
+        if (leftParts.Length != rightParts.Length) return leftParts.Length == 1 ? 1 : -1;
+        if (leftParts.Length == 1) return 0;
+        var leftPre = leftParts[1].Split('.');
+        var rightPre = rightParts[1].Split('.');
+        for (var index = 0; index < Math.Min(leftPre.Length, rightPre.Length); index++)
         {
-            var remoteNumeric = long.TryParse(remotePre[index], out var remoteNumber);
-            var localNumeric = long.TryParse(localPre[index], out var localNumber);
-            var order = remoteNumeric && localNumeric ? remoteNumber.CompareTo(localNumber)
-                : remoteNumeric != localNumeric ? remoteNumeric ? -1 : 1
-                : string.CompareOrdinal(remotePre[index], localPre[index]);
-            if (order != 0) return order > 0;
+            var leftNumeric = long.TryParse(leftPre[index], out var leftNumber);
+            var rightNumeric = long.TryParse(rightPre[index], out var rightNumber);
+            var order = leftNumeric && rightNumeric ? leftNumber.CompareTo(rightNumber)
+                : leftNumeric != rightNumeric ? leftNumeric ? -1 : 1
+                : string.CompareOrdinal(leftPre[index], rightPre[index]);
+            if (order != 0) return order;
         }
-        return remotePre.Length > localPre.Length;
+        return leftPre.Length > rightPre.Length ? 1 : 0;
+    }
+
+    /// <summary>判断版本是否满足 semver 范围；范围无法解析时返回 null（视为未知，不据此拦截）。</summary>
+    public static bool? SatisfiesRange(string version, string range)
+    {
+        if (string.IsNullOrWhiteSpace(range)) return true;
+        if (string.IsNullOrWhiteSpace(version)) return null;
+        var unknown = false;
+        foreach (var alternative in range.Split("||", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var result = SatisfiesComparators(version, alternative);
+            if (result == true) return true;
+            if (result == null) unknown = true;
+        }
+        return unknown ? null : false;
+    }
+
+    static bool? SatisfiesComparators(string version, string comparators)
+    {
+        var parsed = new List<(string Op, string Ver)>();
+        var hyphen = Regex.Match(comparators, @"^(?<low>\S+)\s+-\s+(?<high>\S+)$");
+        if (hyphen.Success)
+        {
+            var low = ParseComparator(">=" + hyphen.Groups["low"].Value);
+            var high = ParseComparator("<=" + hyphen.Groups["high"].Value);
+            if (low == null || high == null) return null;
+            parsed.AddRange(low);
+            parsed.AddRange(high);
+        }
+        else
+            foreach (var token in comparators.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var piece = ParseComparator(token);
+                if (piece == null) return null;
+                parsed.AddRange(piece);
+            }
+        if (parsed.Count == 0) return true;
+        if (version.Contains('-') && !parsed.Any(rule => rule.Ver.Contains('-') && SameCore(version, rule.Ver)))
+            return false;
+        foreach (var (op, ver) in parsed)
+        {
+            var order = CompareVersions(version, ver);
+            var ok = op switch
+            {
+                ">=" => order >= 0, ">" => order > 0, "<=" => order <= 0, "<" => order < 0, _ => order == 0,
+            };
+            if (!ok) return false;
+        }
+        return true;
+    }
+
+    static List<(string Op, string Ver)> ParseComparator(string token)
+    {
+        token = token.Trim();
+        if (token.Length == 0 || token is "*" or "x" or "X") return new();
+        var match = Regex.Match(token, @"^(?<op>>=?|<=?|\^|~|=)?v?(?<ver>[\dXx*][\w.+*-]*)$");
+        if (!match.Success) return null;
+        var op = match.Groups["op"].Value;
+        var raw = match.Groups["ver"].Value;
+        var dash = raw.IndexOf('-');
+        var core = (dash >= 0 ? raw[..dash] : raw).Split('.');
+        var pre = dash >= 0 ? raw[dash..] : "";
+        var numbers = new List<int>();
+        var wildcard = -1;
+        for (var index = 0; index < core.Length; index++)
+        {
+            if (core[index] is "x" or "X" or "*") { wildcard = index; break; }
+            if (!int.TryParse(core[index], out var number)) return null;
+            numbers.Add(number);
+        }
+        var significant = wildcard >= 0 ? wildcard : numbers.Count;
+        if (significant == 0 || significant > 3 || pre.Length > 0 && significant < 3) return null;
+        var full = numbers.Concat(Enumerable.Repeat(0, 3 - numbers.Count)).ToList();
+        var lower = string.Join(".", full) + pre;
+        string Bump(int index)
+        {
+            var parts = full.ToList();
+            parts[index]++;
+            for (var rest = index + 1; rest < 3; rest++) parts[rest] = 0;
+            return string.Join(".", parts);
+        }
+        string CaretUpper() => significant switch
+        {
+            1 => Bump(0),
+            2 => full[0] > 0 ? Bump(0) : Bump(1),
+            _ => full[0] > 0 ? Bump(0) : full[1] > 0 ? Bump(1) : Bump(2),
+        };
+        return op switch
+        {
+            ">=" => new() { (">=", lower) },
+            "<" => new() { ("<", lower) },
+            ">" or "<=" when significant < 3 => null,
+            ">" => new() { (">", lower) },
+            "<=" => new() { ("<=", lower) },
+            "^" => new() { (">=", lower), ("<", CaretUpper()) },
+            "~" => new() { (">=", lower), ("<", significant == 1 ? Bump(0) : Bump(1)) },
+            _ when significant == 3 => new() { ("=", lower) },
+            _ => new() { (">=", lower), ("<", significant == 1 ? Bump(0) : Bump(1)) },
+        };
+    }
+
+    static bool SameCore(string left, string right)
+    {
+        static string Core(string version) => (version ?? "").Trim().TrimStart('v', 'V').Split('+')[0].Split('-')[0];
+        return Core(left) == Core(right);
     }
 
     public static string AppVersion() => Assembly.GetEntryAssembly()

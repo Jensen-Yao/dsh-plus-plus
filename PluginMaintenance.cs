@@ -164,7 +164,8 @@ public partial class UpdateService
     public async Task<(bool ok, string msg)> UpdateRuntimeAsync(string channel, Action<string> progress = null,
         CancellationToken cancellation = default)
     {
-        if (channel is not ("latest" or "alpha")) return (false, "无效更新通道。");
+        if (channel is not ("latest" or "alpha" or "next") && !UpdateService.IsExactVersion(channel))
+            return (false, "无效更新通道；使用 latest、alpha、next 或精确版本号。");
         var query = CommandRunner.PackageManager("npm", new[] { "view", "@deepseek-ai/dsh@" + channel, "version", "--json" }, cfg.DshAppDir);
         var resolved = await CommandRunner.RunAsync(query, TimeSpan.FromSeconds(45), cancellation: cancellation);
         if (!resolved.Ok) return (false, CommandRunner.DescribeFailure(

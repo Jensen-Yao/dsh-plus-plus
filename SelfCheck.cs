@@ -55,6 +55,19 @@ public static partial class SelfCheck
         Check("floating declaration is derived from the remote version", UpdateService.FloatingSpec("^0.4.16", "0.5.0") == "^0.5.0"
             && UpdateService.FloatingSpec("npm:alias@^1.0.0", "1.2.0") == "npm:alias@^1.2.0");
         Check("zero-major floating ranges carry a scope note", AdvanceSpecDialog.RangeNote("0.5.0").Length > 0 && AdvanceSpecDialog.RangeNote("v1.2.0").Length == 0);
+        Check("semver ranges gate kernel requirements", UpdateService.SatisfiesRange("0.2.2-rc.1", ">=0.2.2-rc.2") == false
+            && UpdateService.SatisfiesRange("0.2.2-rc.2", ">=0.2.2-rc.2") == true
+            && UpdateService.SatisfiesRange("0.2.2", ">=0.2.2-rc.2") == true
+            && UpdateService.SatisfiesRange("0.5.0", "^0.4.16") == false && UpdateService.SatisfiesRange("0.4.18", "^0.4.16") == true
+            && UpdateService.SatisfiesRange("1.5.0", "~1.4.2") == false && UpdateService.SatisfiesRange("1.4.9", "~1.4.2") == true
+            && UpdateService.SatisfiesRange("2.0.0", "1.x") == false && UpdateService.SatisfiesRange("1.9.9", "1.x") == true);
+        Check("unparsable kernel ranges stay unknown instead of blocking", UpdateService.SatisfiesRange("1.0.0", "workspace:^") == null
+            && UpdateService.SatisfiesRange("1.0.0", "") == true);
+        var kernelBlocked = new PluginItem { Name = "dsh-web-all", Spec = "^0.4.16", Installed = "0.4.16", TargetVersion = "0.4.18", Latest = "0.4.18",
+            KernelVersion = "0.2.2-rc.1", TargetKernelRange = ">=0.2.2-rc.2", TargetKernelSatisfied = false };
+        Check("kernel requirement surfaces in detail and guidance", kernelBlocked.KernelBlocked
+            && kernelBlocked.Description.Contains("要求内核 >=0.2.2-rc.2") && kernelBlocked.Description.Contains("当前内核 0.2.2-rc.1")
+            && kernelBlocked.Description.Contains("升级 DSH 内核"));
         var feedConfig = DesktopService.ReadDesktopUpdateConfig("provider: generic\nurl: https://download.deepseek.com/dsh-desk/feeds/win-x64/\nchannel: nightly\n");
         Check("desktop feed URL follows the configured channel", feedConfig.Url == "https://download.deepseek.com/dsh-desk/feeds/win-x64/" && feedConfig.Channel == "nightly");
         var feed = DesktopService.ReadDesktopUpdateFeed("version: 0.2.2-rc.1\nfiles:\n  - url: https://download.deepseek.com/dsh-desk/bin/win-x64/app.exe\n    size: 123\n    sha512: abcd\nreleaseDate: '2026-11-04T09:31:49.677Z'\n");
@@ -104,6 +117,7 @@ public static partial class SelfCheck
                 Directory.CreateDirectory(bin);
                 Directory.CreateDirectory(profile);
                 File.WriteAllText(Path.Combine(bin, "bin.js"), "process.stdout.write('[]')");
+                File.WriteAllText(Path.Combine(app, "node_modules", "@deepseek-ai", "dsh", "package.json"), "{\"version\":\"1.0.0\"}");
                 var cli = """
                     const fs = require('node:fs');
                     const path = require('node:path');
@@ -138,6 +152,10 @@ public static partial class SelfCheck
                     if(args[0] === 'view') {
                       if(fs.existsSync('fail-query')) process.exit(1);
                       const query = args[1];
+                      if(args.includes('peerDependencies')) {
+                        process.stdout.write(JSON.stringify(fs.existsSync('require-new-kernel') ? {peerDependencies:{'@deepseek-ai/dsh':'>=9.0.0'}} : {}));
+                        process.exit(0);
+                      }
                       process.stdout.write(JSON.stringify(query.endsWith('@1.0.0') ? '1.0.0' : query.includes('@^2') || query.endsWith('@2.0.0') ? '2.0.0' : '1.1.0'));
                     } else fs.appendFileSync('npm-commands.log',JSON.stringify(args)+'\n');
                     """);
@@ -180,6 +198,14 @@ public static partial class SelfCheck
                 using var abort = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 var cancelledUpdate = await updates.UpdatePluginsAsync(new[] { plugin }, cancellation: abort.Token, explicitSpec: "^2.0.0");
                 Check("cancelled install restores previous manifest", !cancelledUpdate.ok && before == File.ReadAllText(Path.Combine(profile, "package.json")));
+                File.WriteAllText(Path.Combine(profile, "require-new-kernel"), "");
+                var kernelBlockedUpdate = await updates.UpdatePluginsAsync(new[] { plugin }, explicitSpec: "^2.0.0");
+                Check("kernel requirement blocks incompatible targets before stopping the service",
+                    !kernelBlockedUpdate.ok && kernelBlockedUpdate.msg.Contains("要求 DSH 内核 >=9.0.0")
+                    && before == File.ReadAllText(Path.Combine(profile, "package.json")));
+                File.Delete(Path.Combine(profile, "require-new-kernel"));
+                var invalidChannel = await updates.UpdateRuntimeAsync("bogus");
+                Check("runtime channels include latest alpha next and exact versions", !invalidChannel.ok && invalidChannel.msg.Contains("无效更新通道"));
                 Check("each maintenance run preserves a separate recovery point", updates.Backups().Count == 3);
                 using (service.AcquireOperationLock())
                 {

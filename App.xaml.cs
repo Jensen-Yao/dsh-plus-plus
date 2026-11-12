@@ -97,6 +97,17 @@ public partial class App : Application
             Shutdown(report.Findings.Any(item => item.Level == "错误") ? 1 : 0);
             return;
         }
+        if (e.Args.Length > 1 && e.Args[0] == "--runtime-update")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var updates = new UpdateService(config, service);
+            var result = System.Threading.Tasks.Task.Run(() => updates.UpdateRuntimeAsync(e.Args[1])).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "runtime-update-result.txt"), result.ok ? "完成：" + result.msg : "失败：" + result.msg);
+            Shutdown(result.ok ? 0 : 1);
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--check-plugins")
         {
             var config = AppConfig.Load();

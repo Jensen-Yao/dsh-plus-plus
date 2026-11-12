@@ -1,6 +1,6 @@
 # dsh++
 
-DeepSeek Harness 的 Windows 桌面控制台。3.6 让「升级到最新」可选固定或浮动声明并讲清版本被声明挡住的原因；3.5 增加插件“升级到最新”通道与官方桌面版更新管理，继续保留会话记录、玻璃材质、健康检查和 Web / 桌面插件对照。
+DeepSeek Harness 的 Windows 桌面控制台。3.7 在插件更新前核对 DSH 内核要求并支持 next（RC）内核通道；3.6 让「升级到最新」可选固定或浮动声明并讲清版本被声明挡住的原因；3.5 增加插件“升级到最新”通道与官方桌面版更新管理，继续保留会话记录、玻璃材质、健康检查和 Web / 桌面插件对照。
 
 ![dsh++ 插件管理](docs/screenshots/plugins-light.png)
 ![dsh++ 桌面版管理](docs/screenshots/desktop-light.png)
@@ -27,7 +27,7 @@ DeepSeek Harness 的 Windows 桌面控制台。3.6 让「升级到最新」可�
 
 “打开时检查控制台、内核与 web 插件”会后台检查三个目标，不安装依赖、不联网修复或阻挡服务启动。手动检查覆盖当前 profile 的全部入口和已发现子包，不受搜索或“有新版”筛选隐藏；普通刷新保留安装信息没有变化的检查结果。失败显示失败与检查时间，不把网络故障当成“已是最新”。维护开始前会取消并等待插件检查结束。
 
-npm 同时查询 latest 与声明内目标；声明范围外的新版本状态显示“有新版（声明 范围外）”，精确固定版本显示“有新版（固定 版本）”，悬停可见声明内最高版本、远端 latest 与解除方法。选择插件后可用「升级到最新」显式切换到远端发布版：npm 插件会先选择升级后的声明方式（默认浮动 ^ 范围，之后「更新所选」可继续安装范围内新版；或固定精确版本，0.x 包会提示 ^ 只跟随同一小版本），固定 Git tag 与本地链接也支持该通道。Git 浮动分支比较远端提交与锁定提交，固定 tag 列出更高版本 tag，注解 tag 使用剥离后的提交。只沿含 dsh.bundle 元数据的依赖展开聚合插件，不扫描所有普通 npm 工具依赖。
+npm 同时查询 latest 与声明内目标，并读取目标版本的 DSH 内核要求（peerDependencies 的 @deepseek-ai/dsh，回退 dsh.engines.dsh）：声明内目标或远端 latest 要求的内核高于本地时，状态、悬停详情与选中提示会显示要求范围、当前内核和“先升级内核”的指引；安装前解析阶段会拦截内核不满足的目标（不停止服务、不修改依赖），批量更新中被挡住的项自动跳过。声明范围外的新版本状态显示“有新版（声明 范围外）”，精确固定版本显示“有新版（固定 版本）”，悬停可见声明内最高版本、远端 latest 与解除方法。选择插件后可用「升级到最新」显式切换到远端发布版：npm 插件会先选择升级后的声明方式（默认浮动 ^ 范围，之后「更新所选」可继续安装范围内新版；或固定精确版本，0.x 包会提示 ^ 只跟随同一小版本），固定 Git tag 与本地链接也支持该通道。Git 浮动分支比较远端提交与锁定提交，固定 tag 列出更高版本 tag，注解 tag 使用剥离后的提交。只沿含 dsh.bundle 元数据的依赖展开聚合插件，不扫描所有普通 npm 工具依赖。
 
 | 来源 / 声明 | 默认行为 |
 | --- | --- |
@@ -65,7 +65,7 @@ pnpm-lock.yaml 是版本与来源记录，不是长期占用文件的互斥锁�
 
 ## 版本与备份
 
-- DSH：查看 npm latest / alpha 通道，安装前解析精确版本，只备份安装目录与实际同步的 web profile。内核更新时同步 web profile 的官方伴随包，也可以单独点“同步官方依赖”；目标版本来自实际内核安装目录，其他 profile 与社区插件不参加这一步。
+- DSH：查看 npm latest / next（RC）/ alpha 通道，安装前解析精确版本，只备份安装目录与实际同步的 web profile。内核更新时同步 web profile 的官方伴随包，也可以单独点“同步官方依赖”；目标版本来自实际内核安装目录，其他 profile 与社区插件不参加这一步。
 - dsh++：检查 GitHub Windows x64 发布包，验证必需文件后替换，旧程序保留在 app-updates 目录。
 - 恢复点：保存 package.json、pnpm-lock.yaml / package-lock.json、cordis.patch.yml、pnpm-workspace.yaml 和 .npmrc；不复制会话或凭据数据目录。存在锁文件时按锁安装；没有锁文件时仅能按原声明重新解析，不能保证传递依赖的原版本。
 - 手动备份：使用插件页选择的 profile；“全部 Profile”时默认为 web。目录里仍可能包含敏感配置，请妥善保管恢复点。
@@ -116,6 +116,8 @@ self-test 使用临时目录检查目标解析、声明保留、声明外升级�
 check-plugins 是只读版本诊断，默认检查 web；结果写入状态目录的 plugin-update-check.json。任一远端检查失败或 profile 不存在时退出码为 1，发现新版或来源提示本身不视为命令失败。
 
 service 支持 start / stop / restart / status；结果写入状态目录的 service-result.txt。服务由独立 Node 宿主维持，关闭控制台可以保留后台服务；端口停止操作会先检查 DSH 进程归属。
+
+`--runtime-update <latest|alpha|next|版本号>` 走与界面相同的内核更新流程（解析精确版本、备份、停止服务、安装、核对版本、同步伴随包、按偏好恢复服务），结果写入状态目录的 runtime-update-result.txt。
 desktop 支持 start / stop / restart / sync-web / check-update / update / status；结果写入 desktop-result.txt。桌面版进程按安装目录精确匹配，不会误杀其他 Electron 应用。
 
 主要文件：RuntimeLifecycle.cs 负责服务生命周期；DesktopIntegration.cs 与 DesktopSynchronization.cs 负责桌面版进程和 profile 投影；PluginInventory.cs、PluginLock.cs 与 PluginUpdates.cs 负责聚合发现、来源读取和目标解析；PluginMaintenance.cs 与 MaintenanceHistory.cs 负责维护、记录和恢复；CommandRunner.cs 负责取消与超时；scripts/runtime-host.mjs 负责服务登记与远程转发；MainWindow.xaml(.cs) 与 UpdatePreviewWindow.xaml(.cs) 负责界面。

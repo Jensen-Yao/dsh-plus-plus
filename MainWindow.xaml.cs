@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     DesktopUpdateStatus desktopUpdate;
     string stableVersion;
     string alphaVersion;
+    string nextVersion;
     string activeBind;
     bool running;
     bool desktopRunning;
@@ -426,6 +427,8 @@ public partial class MainWindow : Window
             PluginDetailText.ToolTip = CommandRunner.Redact(plugin.Description);
             PluginHintText.Text = plugin.SourceIssue.Length > 0 ? plugin.SourceIssue : plugin.CheckError.Length > 0 ? "检查失败，悬停查看详情。"
                 : plugin.IsIndirect ? "由所属入口安装，不单独提升为直接依赖。"
+                : plugin.TargetKernelSatisfied == false ? $"声明内目标 {plugin.TargetVersion} 要求内核 {plugin.TargetKernelRange}，当前内核 {plugin.KernelVersion}；先在「版本与备份」升级 DSH 内核，再更新此插件。"
+                : plugin.LatestKernelSatisfied == false ? $"远端最新 {plugin.Latest} 要求内核 {plugin.LatestKernelRange}，当前内核 {plugin.KernelVersion}；先升级内核，再「升级到最新」。"
                 : plugin.DeclarationRestricted ? $"声明 {plugin.Spec} 内最高可装 {plugin.TargetVersion}，远端 latest {plugin.Latest} 超出声明，普通更新不会安装。选中后用「升级到最新」切换为固定或浮动声明。"
                 : plugin.IsPinned && plugin.HasUpdate ? $"声明固定在 {plugin.Spec}；远端 latest {plugin.Latest}。选中后用「升级到最新」改用新版，或用「指定版本」改成范围声明。"
                 : plugin.CanAdvance ? $"远端最新 {plugin.AdvanceTarget}；「升级到最新」会显式切换声明并保留回滚点。"
@@ -496,8 +499,18 @@ public partial class MainWindow : Window
     async void BtnPluginUpdate_Click(object sender, RoutedEventArgs e)
     {
         var selected = plugins.Where(plugin => plugin.Selected).ToList();
-        if (selected.Count == 0 || !ConfirmMaintenance("更新所选插件", selected.Select(plugin =>
-            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"已安装 {plugin.Installed} → 声明 {plugin.Spec}")), selected.Select(plugin => plugin.Profile))) return;
+        var kernelBlocked = selected.Where(plugin => plugin.TargetKernelSatisfied == false).ToList();
+        if (kernelBlocked.Count > 0)
+        {
+            PluginHintText.Text = "所选插件中 " + kernelBlocked.Count + " 项的声明内目标要求更高内核（" +
+                string.Join("、", kernelBlocked.Select(plugin => plugin.Name + " 需 " + plugin.TargetKernelRange)) +
+                "），本次跳过；请先在「版本与备份」升级 DSH 内核。";
+            selected = selected.Except(kernelBlocked).ToList();
+        }
+        if (selected.Count == 0) return;
+        if (!ConfirmMaintenance("更新所选插件", selected.Select(plugin =>
+            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"已安装 {plugin.Installed} → 声明 {plugin.Spec}"
+                + (plugin.TargetKernelSatisfied == false ? $"（需内核 {plugin.TargetKernelRange}）" : ""))), selected.Select(plugin => plugin.Profile))) return;
         await RunTaskAsync("更新插件", async cancellation =>
             await Task.Run(() => upd.UpdatePluginsAsync(selected, Progress, cancellation)));
     }
@@ -528,9 +541,15 @@ public partial class MainWindow : Window
             if (choice.ShowDialog() != true) return;
             target = choice.ChosenSpec;
         }
+        if (plugin.LatestKernelSatisfied == false)
+        {
+            PluginHintText.Text = $"远端最新 {plugin.Latest} 要求内核 {plugin.LatestKernelRange}，当前内核 {plugin.KernelVersion}；请先在「版本与备份」升级 DSH 内核。";
+            return;
+        }
         if (!ConfirmMaintenance("升级插件到远端最新", new[]
         {
-            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"{plugin.Installed} · {plugin.Spec} → {target}"),
+            new PlannedChange(plugin.Profile + " / " + plugin.Name, $"{plugin.Installed} · {plugin.Spec} → {target}"
+                + (plugin.TargetKernelSatisfied == false ? $"（需内核 {plugin.TargetKernelRange}）" : "")),
             new PlannedChange("维护方式", plugin.IsLocal ? "本地链接切换为远端发布版" : "保留原来源，显式采用远端目标"),
         }, new[] { plugin.Profile })) return;
         await RunTaskAsync("升级 " + plugin.Name, async cancellation =>
@@ -547,9 +566,11 @@ public partial class MainWindow : Window
             if (versions.err != null) { DshUpdHint.Text = versions.err; return; }
             stableVersion = versions.latest;
             alphaVersion = versions.alpha;
+            nextVersion = versions.next;
             var (local, _) = upd.LocalDshVersion();
-            DshRemoteText.Text = $"正式版 {stableVersion} · 预览版 {alphaVersion}";
+            DshRemoteText.Text = $"正式版 {stableVersion} · RC 版 {nextVersion} · 预览版 {alphaVersion}";
             BtnDshUpdateStable.IsEnabled = !busy && UpdateService.IsNewer(stableVersion, local);
+            BtnDshUpdateNext.IsEnabled = !busy && UpdateService.IsNewer(nextVersion, local);
             BtnDshUpdateAlpha.IsEnabled = !busy && UpdateService.IsNewer(alphaVersion, local);
             DshUpdHint.Text = "已完成版本检查";
         }
@@ -564,16 +585,19 @@ public partial class MainWindow : Window
     }
     async Task UpdateRuntimeAsync(string channel)
     {
+        var remote = channel == "latest" ? stableVersion : channel == "alpha" ? alphaVersion : channel == "next" ? nextVersion : channel;
         if (!ConfirmMaintenance("更新 DSH 内核", new[] { new PlannedChange("@deepseek-ai/dsh", "目标通道 " + channel
-            + " · 当前查询 " + (channel == "latest" ? stableVersion : alphaVersion)),
+            + " · 当前查询 " + remote),
             new PlannedChange("web profile", "仅同步官方伴随包，不批量更新社区插件。") })) return;
         await RunTaskAsync("更新 DSH 内核", async cancellation =>
             await Task.Run(() => upd.UpdateRuntimeAsync(channel, Progress, cancellation)));
         DshUpdHint.Text = TaskDetail.Text;
         BtnDshUpdateStable.IsEnabled = false;
+        BtnDshUpdateNext.IsEnabled = false;
         BtnDshUpdateAlpha.IsEnabled = false;
     }
     async void BtnDshUpdateStable_Click(object sender, RoutedEventArgs e) => await UpdateRuntimeAsync("latest");
+    async void BtnDshUpdateNext_Click(object sender, RoutedEventArgs e) => await UpdateRuntimeAsync("next");
     async void BtnDshUpdateAlpha_Click(object sender, RoutedEventArgs e) => await UpdateRuntimeAsync("alpha");
     async void BtnSyncCompanions_Click(object sender, RoutedEventArgs e)
     {

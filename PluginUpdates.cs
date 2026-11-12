@@ -25,6 +25,33 @@ public partial class UpdateService
         return (match.Groups["name"].Value, match.Groups["spec"].Success ? match.Groups["spec"].Value : "latest");
     }
 
+    /// <summary>查询指定包版本的 DSH 内核要求；取 peerDependencies["@deepseek-ai/dsh"]，回退 dsh.engines.dsh。查询失败返回空（不据此拦截）。</summary>
+    async Task<string> QueryKernelRequirementAsync(string name, string version, string directory, CancellationToken cancellation)
+    {
+        try
+        {
+            var start = CommandRunner.PackageManager("npm", new[] { "view", name + "@" + version, "peerDependencies", "dsh", "--json" }, directory);
+            var result = await CommandRunner.RunAsync(start, TimeSpan.FromSeconds(30), cancellation: cancellation);
+            if (result.Cancelled) throw new OperationCanceledException(cancellation);
+            if (!result.Ok || string.IsNullOrWhiteSpace(result.StandardOutput)) return "";
+            using var document = JsonDocument.Parse(result.StandardOutput);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return "";
+            var root = document.RootElement;
+            if (root.TryGetProperty("peerDependencies", out var peers) && peers.ValueKind == JsonValueKind.Object
+                && peers.TryGetProperty("@deepseek-ai/dsh", out var peer) && peer.ValueKind == JsonValueKind.String)
+                return peer.GetString() ?? "";
+            if (root.TryGetProperty("dsh", out var metadata) && metadata.ValueKind == JsonValueKind.Object
+                && metadata.TryGetProperty("engines", out var engines) && engines.ValueKind == JsonValueKind.Object
+                && engines.TryGetProperty("dsh", out var engine) && engine.ValueKind == JsonValueKind.String)
+                return engine.GetString() ?? "";
+            return "";
+        }
+        catch (Exception error) when (error is not OperationCanceledException) { return ""; }
+    }
+
+    internal static bool? EvaluateKernelRequirement(string kernel, string range)
+        => string.IsNullOrWhiteSpace(range) ? null : SatisfiesRange(kernel, range);
+
     async Task<string> QueryNpmVersionAsync(string name, string spec, string directory, CancellationToken cancellation)
     {
         var reference = NpmReference(name, spec);
@@ -157,11 +184,15 @@ public partial class UpdateService
         CancellationToken cancellation = default, Action<string> progress = null)
     {
         var completed = 0;
+        var (kernel, _) = LocalDshVersion();
         await Parallel.ForEachAsync(plugins, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellation }, async (plugin, token) =>
         {
             plugin.CheckError = "";
             plugin.TargetVersion = plugin.TargetCommit = "";
             plugin.Latest = "未检查";
+            plugin.KernelVersion = kernel;
+            plugin.TargetKernelRange = plugin.LatestKernelRange = "";
+            plugin.TargetKernelSatisfied = plugin.LatestKernelSatisfied = null;
             try
             {
                 if (plugin.IsCore) plugin.Detail = plugin.Policy;
@@ -204,8 +235,20 @@ public partial class UpdateService
                     }
                     plugin.TargetVersion = reference.Spec == "latest" ? plugin.Latest
                         : await QueryNpmVersionAsync(plugin.Name, plugin.Spec, plugin.ProfileDir, token);
+                    if (!plugin.IsCore && !plugin.IsIndirect && IsExactVersion(plugin.TargetVersion) && plugin.TargetVersion != plugin.Installed)
+                    {
+                        plugin.TargetKernelRange = await QueryKernelRequirementAsync(reference.Name, plugin.TargetVersion, plugin.ProfileDir, token);
+                        plugin.TargetKernelSatisfied = EvaluateKernelRequirement(kernel, plugin.TargetKernelRange);
+                    }
+                    if (!plugin.IsCore && !plugin.IsIndirect && IsExactVersion(plugin.Latest) && plugin.Latest != plugin.Installed
+                        && plugin.Latest != plugin.TargetVersion)
+                    {
+                        plugin.LatestKernelRange = await QueryKernelRequirementAsync(reference.Name, plugin.Latest, plugin.ProfileDir, token);
+                        plugin.LatestKernelSatisfied = EvaluateKernelRequirement(kernel, plugin.LatestKernelRange);
+                    }
                     plugin.Detail = IsNewer(plugin.TargetVersion, plugin.Installed)
-                        ? plugin.IsIndirect ? "有新版；由入口维护" : "声明内可更新"
+                        ? plugin.IsIndirect ? "有新版；由入口维护"
+                            : plugin.TargetKernelSatisfied == false ? "声明内可更新；需内核 " + plugin.TargetKernelRange : "声明内可更新"
                         : IsNewer(plugin.Latest, plugin.Installed)
                             ? plugin.IsPinned ? "有新版（固定 " + plugin.Spec + "）" : "有新版（" + plugin.Spec + " 范围外）"
                         : plugin.Latest == plugin.Installed ? "当前已是最新" : "当前版本高于 latest";
@@ -248,6 +291,14 @@ public partial class UpdateService
         }
         var version = await QueryNpmVersionAsync(plugin.Name, intent, plugin.ProfileDir, cancellation);
         var npm = NpmReference(plugin.Name, intent);
+        var requirement = await QueryKernelRequirementAsync(npm.Name, version, plugin.ProfileDir, cancellation);
+        if (requirement.Length > 0)
+        {
+            var (kernel, _) = LocalDshVersion();
+            if (SatisfiesRange(kernel, requirement) == false)
+                throw new InvalidDataException(
+                    $"{plugin.Name} {version} 要求 DSH 内核 {requirement}，当前内核 {kernel}；请先在「版本与备份」升级 DSH 内核，再更新此插件。");
+        }
         var install = intent.StartsWith("npm:", StringComparison.OrdinalIgnoreCase) ? "npm:" + npm.Name + "@" + version : version;
         return new(current, intent, install, version, "", current.Spec, current.Installed, current.ResolvedSource);
     }
