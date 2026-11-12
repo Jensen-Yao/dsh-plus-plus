@@ -14,6 +14,8 @@
 - 固定安装入口：`F:\SelfSoftware\dsh++\dsh-plus-plus.exe`
 - 当前运行版本：`3.7.1.0`（= GitHub Release 同一构建；旧版备份：`backups\dsh-plus-plus-3.5.5.exe` ~ `3.7.0.exe`）
 - README 已改为居中头部 + Claude 风格 badge 顶栏（terracotta/橄榄绿），docs/screenshots 全部换为 3.7.1 界面渲染图（原软件主题不变——Claude 风格只用于 GitHub 页面，软件本体仍是原 Apple 风双主题）
+- 仓库 About 描述已更新为 3.7 能力概述，topics 补充 plugin-manager / health-check / session-manager
+- GitHub Pages 落地页（main `/docs`，https://jensen-yao.github.io/dsh-plus-plus/ ）已重写为 Claude 风格（暖米底 + 赤陶橙 + serif 标题），内容更新到 3.7.1，截图与 docs/screenshots 同源
 
 ## dsh++ 已完成能力
 
