@@ -46,7 +46,12 @@ public sealed class DesktopService
         var processes = OwnedProcesses().ToList();
         var count = processes.Count;
         foreach (var process in processes) process.Dispose();
-        var version = Installed ? ReadAsarPackageVersion(Path.Combine(cfg.DshDesktopDir, "resources", "app.asar")) : "";
+        var version = "";
+        if (Installed)
+            try { version = ReadAsarPackageVersion(Path.Combine(cfg.DshDesktopDir, "resources", "app.asar")); }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException)
+            { version = ""; }
+        if (version.Length == 0 && count > 0) version = "运行中（版本未知）";
         var crash = Directory.Exists(LogDirectory)
             ? Directory.GetFiles(LogDirectory, "crash-*-host.log").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
             : null;
@@ -69,14 +74,26 @@ public sealed class DesktopService
         var package = json.GetProperty("files").GetProperty("dsh").GetProperty("files").GetProperty("package.json");
         var offset = long.Parse(package.GetProperty("offset").GetString() ?? "-1");
         var size = package.GetProperty("size").GetInt64();
-        var contentStart = 16 + jsonLength + offset;
-        if (offset < 0 || size <= 0 || contentStart < 0 || contentStart + size > stream.Length)
-            throw new InvalidDataException("桌面版程序包条目无效。");
-        stream.Seek(contentStart, SeekOrigin.Begin);
-        var content = new byte[size];
-        if (stream.Read(content) != content.Length) throw new InvalidDataException("桌面版程序包条目不完整。");
-        using var manifest = JsonDocument.Parse(Encoding.UTF8.GetString(content));
-        return manifest.RootElement.GetProperty("version").GetString() ?? "";
+        if (offset < 0 || size <= 0 || size > stream.Length) throw new InvalidDataException("桌面版程序包条目无效。");
+        // 旧格式数据紧随头部（16 + jsonLength）；较新 Electron 会把 header pickle 对齐到 4 字节
+        // 再开始数据区（16 + align4(jsonLength)）。两种基准都探测，取能解析出 manifest 的。
+        var aligned = (jsonLength + 3) / 4 * 4;
+        foreach (var contentStart in new[] { 16 + jsonLength + offset, 16 + aligned + offset })
+        {
+            if (contentStart < 0 || contentStart + size > stream.Length) continue;
+            stream.Seek(contentStart, SeekOrigin.Begin);
+            var content = new byte[size];
+            if (stream.Read(content) != content.Length) continue;
+            try
+            {
+                using var manifest = JsonDocument.Parse(Encoding.UTF8.GetString(content).TrimStart('\0', '\n', '\r', ' '));
+                if (manifest.RootElement.ValueKind == JsonValueKind.Object
+                    && manifest.RootElement.TryGetProperty("version", out var version))
+                    return version.GetString() ?? "";
+            }
+            catch (JsonException) { }
+        }
+        throw new InvalidDataException("桌面版程序包条目无效。");
     }
 
     internal static (string Url, string Channel) ReadDesktopUpdateConfig(string source)

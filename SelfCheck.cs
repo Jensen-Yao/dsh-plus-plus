@@ -104,6 +104,9 @@ public static partial class SelfCheck
             BitConverter.GetBytes(header.Length).CopyTo(prefix, 12);
             File.WriteAllBytes(asar, prefix.Concat(header).Concat(package).ToArray());
             Check("desktop version reads the bundled runtime manifest", DesktopService.ReadAsarPackageVersion(asar) == "0.2.1-rc.2");
+            var alignedPadding = (header.Length + 3) / 4 * 4 - header.Length;
+            File.WriteAllBytes(asar, prefix.Concat(header).Concat(new byte[alignedPadding]).Concat(package).ToArray());
+            Check("desktop version tolerates the aligned pickle asar layout", DesktopService.ReadAsarPackageVersion(asar) == "0.2.1-rc.2");
         }
         finally { File.Delete(asar); }
         var cancelled = new CancellationTokenSource();
