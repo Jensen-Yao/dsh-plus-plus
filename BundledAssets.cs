@@ -10,6 +10,7 @@ internal static class BundledAssets
     {
         ["scripts/runtime-host.mjs"] = "DshControl.assets.runtime-host.mjs",
         ["scripts/apply-update.ps1"] = "DshControl.assets.apply-update.ps1",
+        ["scripts/mcp-schema-sanitizer.mjs"] = "DshControl.assets.mcp-schema-sanitizer.mjs",
         ["compat-polyfill.js"] = "DshControl.assets.compat-polyfill.js",
     };
 

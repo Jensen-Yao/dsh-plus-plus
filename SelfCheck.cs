@@ -44,6 +44,39 @@ public static partial class SelfCheck
         Check("unverified npm same-name package cannot replace a local plugin", !impersonatedLocal.CanAdvance);
         var pinnedAdvance = new PluginItem { Name = "palette", Spec = "github:owner/repo#v0.1.0", Installed = "v0.1.0", Latest = "v0.1.2" };
         Check("pinned Git tag advances to a newer tag", pinnedAdvance.CanAdvance && pinnedAdvance.AdvanceTarget == "github:owner/repo#v0.1.2");
+        var mcpFixture = Path.Combine(Path.GetTempPath(), "dshpp-mcp-check-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(mcpFixture);
+            var server = Path.Combine(mcpFixture, "mini-mcp.mjs");
+            File.WriteAllText(server, """
+                import readline from 'node:readline';
+                const rl = readline.createInterface({ input: process.stdin });
+                rl.on('line', line => {
+                  if (!line.trim()) return;
+                  const message = JSON.parse(line);
+                  if (message.method === 'tools/list')
+                    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { tools: [
+                      { name: 'clean', inputSchema: { type: 'object', properties: { a: { type: 'string' } } } },
+                      { name: 'dirty', inputSchema: { type: 'object', properties: { b: { type: 'string', pattern: '^[^\\\\uD800-\\\\uDFFF]*$' } } } },
+                    ] } }) + '\n');
+                  else if (message.id === 1)
+                    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { capabilities: {} } }) + '\n');
+                });
+                """);
+            var patch = Path.Combine(mcpFixture, "cordis.patch.yml");
+            File.WriteAllText(patch, "- id: mcp-ida\n  name: '@deepseek-ai/dsh-mcp-client'\n  config:\n    serverName: mini\n    transport: stdio\n    command: node\n    args:\n      - " + server.Replace('\\', '/') + "\n");
+            var servers = McpSchemaCheck.ReadServers(patch);
+            Check("mcp patch entries are discovered", servers.Count == 1 && servers[0].ServerName == "mini" && !servers[0].Protected);
+            var dirty = Task.Run(() => McpSchemaCheck.ProbeAsync(servers[0], TimeSpan.FromSeconds(20))).GetAwaiter().GetResult();
+            Check("surrogate patterns are detected in live tool schemas", dirty.tools == 2 && dirty.badTools == 1 && dirty.error.Length == 0);
+            var repair = McpSchemaCheck.Repair(patch, "mcp-ida");
+            var repaired = McpSchemaCheck.ReadServers(patch);
+            Check("repair inserts the sanitizer ahead of the server entry", repair.ok && repaired[0].Protected && repaired[0].Args[0].EndsWith("mcp-schema-sanitizer.mjs"));
+            var clean = Task.Run(() => McpSchemaCheck.ProbeAsync(repaired[0], TimeSpan.FromSeconds(20))).GetAwaiter().GetResult();
+            Check("sanitized server exposes clean tool schemas", clean.tools == 2 && clean.badTools == 0 && clean.error.Length == 0);
+        }
+        finally { try { Directory.Delete(mcpFixture, true); } catch { } }
         var rangeLimited = new PluginItem { Name = "dsh-web-all", Spec = "^0.4.16", Installed = "0.4.16", Latest = "0.5.0", TargetVersion = "0.4.16" };
         Check("range-limited update exposes target, latest, and guidance", rangeLimited.DeclarationRestricted
             && rangeLimited.Description.Contains("声明内最高：0.4.16") && rangeLimited.Description.Contains("远端最新：0.5.0")

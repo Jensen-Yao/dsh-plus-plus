@@ -101,6 +101,29 @@ public partial class App : Application
             Shutdown(report.Findings.Any(item => item.Level == "错误") ? 1 : 0);
             return;
         }
+        if (e.Args.Length > 0 && e.Args[0] == "--mcp-check")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var patchPath = System.IO.Path.Combine(service.HomeBase, "cordis.patch.yml");
+            var lines = new List<string>();
+            foreach (var server in McpSchemaCheck.ReadServers(patchPath))
+            {
+                var tools = 0; var bad = 0; var status = "已防护";
+                if (!server.Protected)
+                {
+                    var probe = System.Threading.Tasks.Task.Run(
+                        () => McpSchemaCheck.ProbeAsync(server, TimeSpan.FromSeconds(25))).GetAwaiter().GetResult();
+                    tools = probe.tools; bad = probe.badTools;
+                    status = probe.error.Length > 0 ? "探测失败：" + probe.error : bad > 0 ? "需要修复" : "通过";
+                }
+                lines.Add($"{server.ServerName} · tools={tools} · bad={bad} · {status}");
+            }
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllLines(System.IO.Path.Combine(AppConfig.ConfigDir, "mcp-check-result.txt"), lines);
+            Shutdown(0);
+            return;
+        }
         if (e.Args.Length > 1 && e.Args[0] == "--runtime-update")
         {
             var config = AppConfig.Load();

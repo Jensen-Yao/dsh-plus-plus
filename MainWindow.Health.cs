@@ -77,6 +77,33 @@ public partial class MainWindow
         await RefreshHealthAsync();
     }
 
+    async void BtnHealthRepairMcp_Click(object sender, RoutedEventArgs e)
+    {
+        var patchPath = Path.Combine(svc.HomeBase, "cordis.patch.yml");
+        var servers = McpSchemaCheck.ReadServers(patchPath);
+        if (servers.Count == 0) { HealthSummaryText.Text = "全局 patch 中没有 stdio MCP server 注册。"; return; }
+        HealthSummaryText.Text = "正在探测 MCP 工具 schema…";
+        var candidates = new List<(McpServerEntry server, int tools, int bad)>();
+        foreach (var server in servers)
+        {
+            if (server.Protected) continue;
+            var probe = await Task.Run(() => McpSchemaCheck.ProbeAsync(server, TimeSpan.FromSeconds(25)));
+            if (probe.badTools > 0) candidates.Add((server, probe.tools, probe.badTools));
+        }
+        if (candidates.Count == 0) { HealthSummaryText.Text = "MCP 工具 schema 全部通过，无需修复。"; return; }
+        if (MessageBox.Show(this, "以下 MCP server 的工具 schema 含 DeepSeek API 不接受的 pattern，会导致带工具的聊天整轮失败：\n"
+                + string.Join("\n", candidates.Select(item => $"· {item.server.ServerName}（{item.bad}/{item.tools} 个工具）"))
+                + "\n\n将为它们插入 dsh++ 内嵌的 schema 清洗代理（patch 先自动备份），重启 DSH Web / 桌面版后生效。继续？",
+                "修复 MCP schema", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        foreach (var item in candidates)
+        {
+            var repair = McpSchemaCheck.Repair(patchPath, item.server.Id);
+            HealthSummaryText.Text = repair.ok ? "修复完成：" + item.server.ServerName : "未修复 " + item.server.ServerName + "：" + repair.message;
+            if (repair.ok) Log(repair.message);
+        }
+        await RefreshHealthAsync();
+    }
+
     void BtnHealthExport_Click(object sender, RoutedEventArgs e)
     {
         if (healthReport == null) return;

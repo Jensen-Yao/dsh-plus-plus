@@ -104,6 +104,20 @@ public static class HealthChecks
         }
         foreach (var record in updates.History().Where(record => record.NeedsRecovery))
             Add("注意", "维护", record.Label, "存在中断或恢复未完成的维护任务，请前往「版本与备份」查看恢复点。服务仍可启动。");
+        var patchPath = Path.Combine(svc.HomeBase, "cordis.patch.yml");
+        var servers = McpSchemaCheck.ReadServers(patchPath);
+        var probes = await Task.WhenAll(servers.Select(async server => (server,
+            result: server.Protected
+                ? (tools: 0, badTools: 0, error: "")
+                : await McpSchemaCheck.ProbeAsync(server, TimeSpan.FromSeconds(25), cancellation))));
+        foreach (var (server, probe) in probes)
+        {
+            if (server.Protected) Add("通过", "MCP", server.ServerName, "已挂 schema 清洗代理，工具 schema 经代理过滤。");
+            else if (probe.error.Length > 0) Add("注意", "MCP", server.ServerName, "工具 schema 探测未完成（不影响启动）：" + probe.error);
+            else if (probe.badTools > 0) Add("错误", "MCP", server.ServerName,
+                $"{probe.badTools}/{probe.tools} 个工具的 schema 含 DeepSeek API 不接受的 surrogate 转义 pattern，带工具的聊天请求会被整轮拒绝。诊断页「修复 MCP schema」可插入清洗代理。");
+            else Add("通过", "MCP", server.ServerName, $"{probe.tools} 个工具 schema 检查通过。");
+        }
         return new(DateTime.UtcNow, findings.OrderBy(item => item.Level == "错误" ? 0 : item.Level == "注意" ? 1 : item.Level == "信息" ? 3 : 2).ToList());
     }
 

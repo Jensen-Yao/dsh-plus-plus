@@ -1,3 +1,10 @@
+# 3.8.0 · 2026-11-17
+
+- 新增 MCP 工具 schema 检查与一键修复：健康检查会探测全局 patch 注册的每个 stdio MCP server（启动并请求 tools/list），发现 DeepSeek API 不接受的 surrogate 转义 pattern（会导致带工具的聊天整轮失败，如 rea-agents 的 `^[^\uD800-\uDFFF]*$`）时报错误并给出指引；探测超时不阻塞启动。
+- 诊断页新增「修复 MCP schema」：确认后为有问题的 server 插入 dsh++ 内嵌的 schema 清洗代理（patch 先自动备份，YAML 校验失败自动还原），重启 DSH Web / 桌面版后生效；已挂代理的 server 显示“已防护”。代理同时支持 node 脚本与任意命令（--exec）。
+- 命令行新增 `--mcp-check`，结果写入状态目录 mcp-check-result.txt。
+- 修复探测的 JSON-RPC 响应匹配（按 id 精确对应 tools/list 响应，避免误读 initialize 的 capabilities）。
+- 验证：122 项自检通过（含 MCP 检查-修复-防护闭环用例）；真实环境探测 ida（6 工具）/ rea（已防护）/ uiycs（3 工具）全部正常。
 # 3.7.4 · 2026-11-16
 
 - 兼容官方桌面版 0.2.2-rc.3 的 asar 布局（header pickle 4 字节对齐后再开始数据区）：runtime 版本同时探测新旧两种数据基准，取能解析出 manifest 的一个。此前 rc.3 安装完成后版本复核会误报“更新失败”，且控制台启动时读取桌面状态直接崩溃（crash.log 报 JsonReaderException）。
