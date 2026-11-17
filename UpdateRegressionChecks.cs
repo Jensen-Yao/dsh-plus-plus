@@ -152,12 +152,45 @@ public static partial class SelfCheck
         check("desktop sync removes web-only remote tunnel patch but keeps user patches",
             !syncPlan.Patch.Contains("web-ui-remote-web-ui") && syncPlan.Patch.Contains("ui-theme"));
         var kernelPlan = UpdateService.BuildDesktopSyncPlan(syncWeb, syncDesktop,
-            new Dictionary<string, string> { ["range-plugin"] = "1.1.0" });
+            new Dictionary<string, (string, string, bool, string)> { ["range-plugin"] = ("1.1.0", "（桌面内核兼容上限）", false, "") });
         var kernelDependencies = kernelPlan.Manifest["dependencies"]!.AsObject();
         check("desktop sync honors the desktop runtime kernel ceiling over the web installed version",
             kernelDependencies["range-plugin"]!.GetValue<string>() == "1.1.0"
             && kernelPlan.DependencyChanges.Any(change => change.Name == "range-plugin" && change.Web.Contains("桌面内核兼容上限")));
         check("desktop sync leaves local and git declarations outside kernel overrides",
             kernelDependencies["git-plugin"]!.GetValue<string>() == "github:owner/repo#v1.0.0");
+        Directory.CreateDirectory(Path.Combine(syncDesktop, "node_modules", "range-plugin"));
+        File.WriteAllText(Path.Combine(syncDesktop, "node_modules", "range-plugin", "package.json"),
+            "{\"name\":\"range-plugin\",\"version\":\"1.3.0\"}");
+        var driftPlan = UpdateService.BuildDesktopSyncPlan(syncWeb, syncDesktop);
+        check("desktop sync keeps the desktop-side newer version instead of pinning back to web",
+            driftPlan.Manifest["dependencies"]!["range-plugin"]!.GetValue<string>() == "1.3.0");
+        var basePatch = """
+            - id: skin
+              name: skin-plugin
+              config:
+                enabled: true
+            - id: theme
+              name: theme-plugin
+              config:
+                color: warm
+            """;
+        var (mergedFlow, flowNotes) = UpdateService.MergePatchEntries(basePatch,
+            basePatch.Replace("enabled: true", "enabled: false"), basePatch);
+        check("patch merge projects web-side changes when desktop is untouched", mergedFlow.Contains("enabled: false") && flowNotes.Count == 0);
+        var (mergedBack, backNotes) = UpdateService.MergePatchEntries(basePatch, basePatch,
+            basePatch.Replace("color: warm", "color: dark"));
+        check("patch merge keeps and flows back desktop-side changes", mergedBack.Contains("color: dark")
+            && backNotes.Any(note => note.Contains("theme") && note.Contains("回流")));
+        var (mergedExtra, extraNotes) = UpdateService.MergePatchEntries(basePatch, basePatch,
+            basePatch + "\n- id: extra\n  name: extra-plugin\n");
+        check("patch merge appends desktop-only entries back to web", mergedExtra.Contains("id: extra")
+            && extraNotes.Any(note => note.Contains("extra") && note.Contains("新增")));
+        var (mergedConflict, conflictNotes) = UpdateService.MergePatchEntries(basePatch,
+            basePatch.Replace("enabled: true", "enabled: false"), basePatch.Replace("enabled: true", "enabled: maybe"));
+        check("patch merge prefers the desktop side when both ends changed", mergedConflict.Contains("enabled: maybe")
+            && conflictNotes.Any(note => note.Contains("以桌面为准")));
+        var (mergedFirst, firstNotes) = UpdateService.MergePatchEntries(null, basePatch, basePatch.Replace("color: warm", "color: dark"));
+        check("patch merge without a snapshot falls back to web as before", mergedFirst.Contains("color: warm") && firstNotes.Count == 0);
     }
 }

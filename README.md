@@ -101,7 +101,7 @@ npm 同时查询 latest 与声明内目标，并读取目标版本的 DSH 内核
 
 「桌面版」页显示安装路径、runtime 版本、进程数与 desktop profile，支持启停和只读版本检查。官方更新读取安装包自带 feed，下载后核对大小与 SHA-512，由官方 NSIS 安装器静默更新并复核 runtime 版本；dsh++ 不手工替换官方内置文件。
 
-「从 Web 同步配置」把 web profile 的社区插件入口、bundle 顺序和用户 patch 配置投影到 desktop profile：npm 范围会钉成 web 当前安装版本；官方依赖、Electron 与 Playwright 构建依赖不复制。执行时先备份、停止桌面版、安装依赖、核对两端版本一致、启动官方桌面版验证，再恢复原运行状态。桌面版与 Web 端共享 `~/.dsh` 的会话、凭据、技能和工作区，但使用独立 `profiles/desktop`。
+「从 Web 同步配置」把 web profile 的社区插件入口、bundle 顺序和用户 patch 配置同步到 desktop profile，采用**条目级三方合并**：桌面端未被本地改动的条目按 web 投影，桌面端改过（官方插件管理器启用 / 配置 / 新装）的条目保留并回流 web，两端都改以桌面为准。同步不降级桌面端已装版本（目标取两端较新者，受桌面 runtime 内核约束）；web 落后于桌面端时提示先「升级到最新」再同步锁齐。npm 范围钉成目标版本；官方依赖、Electron 与 Playwright 构建依赖不复制。执行时先备份（回流写 web patch 亦单独备份）、停止桌面版、安装依赖、核对两端版本、启动官方桌面版验证，再恢复原运行状态。桌面版与 Web 端共享 `~/.dsh` 的会话、凭据、技能和工作区，但使用独立 `profiles/desktop`。
 
 </details>
 
