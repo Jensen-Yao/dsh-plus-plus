@@ -101,6 +101,30 @@ public partial class App : Application
             Shutdown(report.Findings.Any(item => item.Level == "错误") ? 1 : 0);
             return;
         }
+        if (e.Args.Length > 1 && e.Args[0] == "--plugin-latest")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var updates = new UpdateService(config, service);
+            var profileName = e.Args.Length > 2 ? e.Args[2] : "web";
+            var result = System.Threading.Tasks.Task.Run(async () =>
+            {
+                var profile = updates.Profiles().FirstOrDefault(item => item.Name == profileName);
+                if (profile == null) return (ok: false, msg: "profile 不存在：" + profileName);
+                var plugin = profile.Plugins.FirstOrDefault(item => item.Name == e.Args[1] && !item.IsIndirect);
+                if (plugin == null) return (ok: false, msg: "插件不存在：" + e.Args[1]);
+                var check = await updates.CheckPluginsAsync(new[] { plugin });
+                if (plugin.CheckError.Length > 0) return (ok: false, msg: "远端检查失败：" + plugin.CheckError);
+                if (string.IsNullOrWhiteSpace(plugin.Latest) || !UpdateService.IsExactVersion(plugin.Latest.TrimStart('v', 'V')))
+                    return (ok: false, msg: "远端未返回有效最新版本：" + plugin.Latest);
+                return await updates.UpdatePluginsAsync(new[] { plugin }, explicitSpec: plugin.Latest);
+            }).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "plugin-update-result.txt"),
+                result.ok ? "完成：" + result.msg : "失败：" + result.msg);
+            Shutdown(result.ok ? 0 : 1);
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--mcp-check")
         {
             var config = AppConfig.Load();

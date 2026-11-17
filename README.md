@@ -129,7 +129,7 @@ npm 同时查询 latest 与声明内目标，并读取目标版本的 DSH 内核
 | StartupTimeoutSeconds | 网页就绪及重启接续等待，默认 60 秒（10–180） |
 | UpdateTimeoutMinutes | 每条包管理命令超时，默认 15 分钟（1–60） |
 
-命令行：`--service start|stop|restart|status`、`--desktop start|stop|restart|sync-web|check-update|update|status`、`--runtime-update <latest|alpha|next|版本>`、`--check-plugins [profile]`、`--health`、`--session-history`、`--self-test`、`--smoke`。结果分别写入状态目录对应的 txt / json 文件。
+命令行：`--service start|stop|restart|status`、`--desktop start|stop|restart|sync-web|check-update|update|status`、`--runtime-update <latest|alpha|next|版本>`、`--plugin-latest <插件名> [profile]`、`--check-plugins [profile]`、`--health`、`--mcp-check`、`--session-history`、`--self-test`、`--smoke`。结果分别写入状态目录对应的 txt / json 文件。
 
 </details>
 
