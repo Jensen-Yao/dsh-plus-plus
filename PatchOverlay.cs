@@ -37,6 +37,17 @@ public static class PatchOverlay
         }
     }
 
+    /// <summary>启动前预检 overlay patch：损坏且可自动修复（孤立分隔符）时先备份再修复；修不了返回失败并指路诊断页。web 与桌面端启动路径共用。</summary>
+    public static (bool ok, string message) PreFlight(string profileDirectory)
+    {
+        var status = ReadStatus(profileDirectory);
+        if (status.Level != "错误") return (true, "");
+        var repair = Repair(profileDirectory);
+        return repair.ok
+            ? (true, "已自动修复损坏的 overlay patch（孤立文档分隔符，原文件已备份）。")
+            : (false, "overlay patch 损坏且无法自动修复（" + status.Title + "）。请到「诊断与日志」→ 重新检查并处理后再启动。");
+    }
+
     /// <summary>移除顶层孤立的 --- / ... 分隔符行并合并为单文档；修复前备份，修复后仍无法解析则还原并返回失败。</summary>
     public static (bool ok, string message) Repair(string profileDirectory)
     {

@@ -63,6 +63,11 @@ public partial class DshService
         int startedHostPid = 0;
         try
         {
+            var webPreflight = PatchOverlay.PreFlight(Path.Combine(HomeBase, "profiles", "web"));
+            if (!webPreflight.ok) throw new InvalidOperationException(webPreflight.message);
+            var globalPreflight = PatchOverlay.PreFlight(HomeBase);
+            if (!globalPreflight.ok) throw new InvalidOperationException("全局 " + globalPreflight.message);
+            var healed = new[] { webPreflight.message, globalPreflight.message }.Where(message => message.Length > 0).ToList();
             if (!File.Exists(BinJs)) throw new FileNotFoundException("找不到 DSH，请检查安装目录。", BinJs);
             if (IsDshRunning()) throw new InvalidOperationException($"端口 {Cfg.Port} 已被占用，请先检查当前服务。");
             var bind = ResolveBindHost();
@@ -128,7 +133,7 @@ public partial class DshService
                         if (response.IsSuccessStatusCode && relayReady)
                         {
                             Log("DSH 已就绪：" + LocalUrl());
-                            return (true, "服务已就绪");
+                            return (true, "服务已就绪" + (healed.Count > 0 ? "（" + string.Join("；", healed) + "）" : ""));
                         }
                     }
                     catch (HttpRequestException) { }

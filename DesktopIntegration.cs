@@ -337,22 +337,26 @@ public sealed class DesktopService
         }
     }
 
-    /// <summary>启动前预检 desktop profile 的 overlay patch：损坏且可自动修复（孤立分隔符）时先备份再修复；修不了则拒绝启动并指路诊断页。</summary>
-    internal static (bool ok, string message) PreFlightPatch(string profileDirectory)
+    /// <summary>启动前预检 desktop profile 与全局 overlay patch；损坏且可自动修复时先备份再修复。</summary>
+    internal static (bool ok, string message) PreFlightPatch(string profileDirectory, string homeBase = null)
     {
-        var status = PatchOverlay.ReadStatus(profileDirectory);
-        if (status.Level != "错误") return (true, "");
-        var repair = PatchOverlay.Repair(profileDirectory);
-        return repair.ok
-            ? (true, "已自动修复损坏的 overlay patch（孤立文档分隔符，原文件已备份）。")
-            : (false, "overlay patch 损坏且无法自动修复（" + status.Title + "）。请到「诊断与日志」→ 重新检查并处理后再启动。");
+        var preflight = PatchOverlay.PreFlight(profileDirectory);
+        if (!preflight.ok) return preflight;
+        if (homeBase != null && Directory.Exists(homeBase))
+        {
+            var globalCheck = PatchOverlay.PreFlight(homeBase);
+            if (!globalCheck.ok) return (false, "全局 " + globalCheck.message);
+            if (globalCheck.message.Length > 0)
+                return (true, preflight.message.Length > 0 ? preflight.message + "全局 " + globalCheck.message : "全局 " + globalCheck.message);
+        }
+        return preflight;
     }
 
     public async Task<(bool ok, string message)> StartAsync()
     {
         if (!Installed) return (false, "找不到桌面版程序，请先安装或检查路径。");
         if (IsRunning()) return (true, "桌面版已在运行。");
-        var preflight = PreFlightPatch(ProfileDirectory);
+        var preflight = PreFlightPatch(ProfileDirectory, svc.HomeBase);
         if (!preflight.ok) return (false, preflight.message);
         try
         {

@@ -64,7 +64,9 @@ public partial class App : Application
                 message => System.IO.File.AppendAllText(syncLogPath, message + Environment.NewLine));
             var result = System.Threading.Tasks.Task.Run(async () => e.Args[1] switch
             {
-                "start" => await desktop.StartAsync(),
+                "start" => await updates.RepairDesktopDependenciesIfMissingAsync() is { ok: false } repair
+                    ? repair
+                    : await desktop.StartAsync(),
                 "stop" => await desktop.StopAsync(),
                 "restart" => await desktop.RestartAsync(),
                 "sync-web" => await updates.SynchronizeDesktopFromWebAsync(),

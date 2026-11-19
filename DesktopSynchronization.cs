@@ -223,6 +223,20 @@ public partial class UpdateService
         return result;
     }
 
+    /// <summary>桌面启动前的依赖自愈：检测 desktop profile 直接依赖的安装产物缺失（官方插件市场更新可能破坏 node_modules），缺失时自动走「从 Web 同步配置」重建。</summary>
+    public async Task<(bool ok, string msg)> RepairDesktopDependenciesIfMissingAsync(CancellationToken cancellation = default)
+    {
+        var desktop = Profiles().FirstOrDefault(profile => profile.Name == "desktop");
+        if (desktop == null) return (true, "");
+        var missing = desktop.Plugins.Where(plugin => !plugin.IsIndirect && plugin.Installed.Length == 0).Select(plugin => plugin.Name).ToList();
+        if (missing.Count == 0) return (true, "");
+        Log("桌面端插件安装产物缺失：" + string.Join("、", missing) + "，自动同步重建依赖。");
+        var result = await SynchronizeDesktopFromWebAsync(null, cancellation);
+        return result.ok
+            ? (true, "已自动重建缺失的桌面端依赖（" + string.Join("、", missing) + "）。")
+            : (false, "桌面端依赖缺失（" + string.Join("、", missing) + "）且自动重建失败：" + result.msg);
+    }
+
     /// <summary>为每个社区依赖解析同步目标版本：取两端已装中较新者，且必须满足桌面 runtime 的内核要求（不满足时回退兼容上限）。官方桌面端安装器升级过的版本不会被同步降级。</summary>
     internal async Task<Dictionary<string, (string target, string note, bool drift, string webBehind)>> ResolveDesktopTargetsAsync(
         ProfileInfo web, ProfileInfo desktop, string runtime, CancellationToken cancellation)

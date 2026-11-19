@@ -123,6 +123,13 @@ public static partial class SelfCheck
             var preflightBlocked = DesktopService.PreFlightPatch(overlayFixture);
             Check("desktop preflight blocks start when the patch cannot be auto-repaired", !preflightBlocked.ok
                 && preflightBlocked.message.Contains("诊断与日志"));
+            var homeFixture = Path.Combine(overlayFixture, "home");
+            Directory.CreateDirectory(Path.Combine(homeFixture, "profiles", "x"));
+            File.WriteAllText(PatchOverlay.PathOf(Path.Combine(homeFixture, "profiles", "x")), "- id: fine\n");
+            File.WriteAllText(PatchOverlay.PathOf(homeFixture), "- id: ok\n...\n- id: market-junk\n");
+            var globalHealed = DesktopService.PreFlightPatch(Path.Combine(homeFixture, "profiles", "x"), homeFixture);
+            Check("preflight also guards and heals the global overlay", globalHealed.ok
+                && globalHealed.message.Contains("已自动修复") && PatchOverlay.ReadStatus(homeFixture).Level != "错误");
         }
         finally { Directory.Delete(overlayFixture, true); }
         var kernelBlocked = new PluginItem { Name = "dsh-web-all", Spec = "^0.4.16", Installed = "0.4.16", TargetVersion = "0.4.18", Latest = "0.4.18",

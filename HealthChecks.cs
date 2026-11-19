@@ -67,6 +67,8 @@ public static class HealthChecks
         Add("信息", "桌面版", desktopState.State, desktopState.Installed ? desktopState.Version + " · " + desktopState.ProcessCount + " 进程" : desktopState.Executable);
         if (desktopState.Running && pid != 0 && desktopState.TaskLedgerOwner is "桌面版" or "Web 端")
             Add("注意", "共享数据", "任务看板单写锁", desktopState.TaskLedgerOwner + "持有任务看板锁，另一端的任务看板可能降级。需要完整看板时停止另一端；不要删除活动锁文件。");
+        var globalOverlay = PatchOverlay.ReadStatus(svc.HomeBase);
+        Add(globalOverlay.Level, "全局", globalOverlay.Title, globalOverlay.Detail);
         var profilesRoot = Path.Combine(svc.HomeBase, "profiles");
         foreach (var directory in Directory.Exists(profilesRoot) ? Directory.GetDirectories(profilesRoot) : Array.Empty<string>())
         {

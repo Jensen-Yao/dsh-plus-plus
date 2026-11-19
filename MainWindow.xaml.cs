@@ -818,7 +818,15 @@ public partial class MainWindow : Window
     }
 
     async void BtnDesktopStart_Click(object sender, RoutedEventArgs e)
-        => await RunTaskAsync("启动桌面版", async cancellation => await desktop.StartAsync());
+        => await RunTaskAsync("启动桌面版", async cancellation =>
+        {
+            var repair = await upd.RepairDesktopDependenciesIfMissingAsync(cancellation);
+            if (!repair.ok) return repair;
+            var started = await desktop.StartAsync();
+            if (repair.msg.Length > 0 && started.ok)
+                started = (started.ok, started.message + "（" + repair.msg + "）");
+            return started;
+        });
     async void BtnDesktopStop_Click(object sender, RoutedEventArgs e)
         => await RunTaskAsync("停止桌面版", async _ => await desktop.StopAsync());
     async void BtnDesktopRestart_Click(object sender, RoutedEventArgs e)
