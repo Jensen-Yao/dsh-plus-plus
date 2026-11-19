@@ -337,10 +337,23 @@ public sealed class DesktopService
         }
     }
 
+    /// <summary>启动前预检 desktop profile 的 overlay patch：损坏且可自动修复（孤立分隔符）时先备份再修复；修不了则拒绝启动并指路诊断页。</summary>
+    internal static (bool ok, string message) PreFlightPatch(string profileDirectory)
+    {
+        var status = PatchOverlay.ReadStatus(profileDirectory);
+        if (status.Level != "错误") return (true, "");
+        var repair = PatchOverlay.Repair(profileDirectory);
+        return repair.ok
+            ? (true, "已自动修复损坏的 overlay patch（孤立文档分隔符，原文件已备份）。")
+            : (false, "overlay patch 损坏且无法自动修复（" + status.Title + "）。请到「诊断与日志」→ 重新检查并处理后再启动。");
+    }
+
     public async Task<(bool ok, string message)> StartAsync()
     {
         if (!Installed) return (false, "找不到桌面版程序，请先安装或检查路径。");
         if (IsRunning()) return (true, "桌面版已在运行。");
+        var preflight = PreFlightPatch(ProfileDirectory);
+        if (!preflight.ok) return (false, preflight.message);
         try
         {
             using var process = Process.Start(new ProcessStartInfo(Executable)
@@ -370,7 +383,7 @@ public sealed class DesktopService
             if (latestCrash.Length > 0 && File.GetLastWriteTimeUtc(latestCrash) >= startedUtc)
                 return (false, "桌面版 Host 启动失败，最新崩溃日志：" + Path.GetFileName(latestCrash));
             log?.Invoke("桌面版已启动：" + Executable);
-            return (true, "桌面版已启动。");
+            return (true, "桌面版已启动。" + (preflight.message.Length > 0 ? "（" + preflight.message + "）" : ""));
         }
         catch (Exception error) { return (false, "桌面版启动失败：" + error.Message); }
     }

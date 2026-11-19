@@ -114,6 +114,15 @@ public static partial class SelfCheck
             File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: [broken\n");
             Check("overlay repair keeps unparsable files unchanged", !PatchOverlay.Repair(overlayFixture).ok
                 && File.ReadAllText(PatchOverlay.PathOf(overlayFixture)) == "- id: [broken\n");
+            File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: pet\n  config:\n    petId: xiaotao\n...\n- id: market-fallback\n  disabled: true\n");
+            var preflightHealed = DesktopService.PreFlightPatch(overlayFixture);
+            Check("desktop preflight self-heals the market-corrupted patch and allows start", preflightHealed.ok
+                && preflightHealed.message.Contains("已自动修复")
+                && PatchOverlay.ReadStatus(overlayFixture).Level != "错误");
+            File.WriteAllText(PatchOverlay.PathOf(overlayFixture), "- id: [broken\n");
+            var preflightBlocked = DesktopService.PreFlightPatch(overlayFixture);
+            Check("desktop preflight blocks start when the patch cannot be auto-repaired", !preflightBlocked.ok
+                && preflightBlocked.message.Contains("诊断与日志"));
         }
         finally { Directory.Delete(overlayFixture, true); }
         var kernelBlocked = new PluginItem { Name = "dsh-web-all", Spec = "^0.4.16", Installed = "0.4.16", TargetVersion = "0.4.18", Latest = "0.4.18",
