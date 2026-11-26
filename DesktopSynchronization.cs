@@ -252,7 +252,7 @@ public partial class UpdateService
             var desktopInstalled = InstalledVersion(desktop.Dir, plugin.Name);
             var desired = desktopInstalled.Length > 0 && CompareVersions(desktopInstalled, webInstalled) > 0 ? desktopInstalled : webInstalled;
             var reference = NpmReference(plugin.Name, plugin.Spec).Name;
-            if (!string.IsNullOrWhiteSpace(runtime) && desired != webInstalled)
+            if (!string.IsNullOrWhiteSpace(runtime))
             {
                 var requirement = await QueryKernelRequirementAsync(reference, desired, web.Dir, cancellation);
                 Log($"内核要求核对 {plugin.Name}@{desired} → 要求「{requirement}」/ 桌面 runtime {runtime}");

@@ -127,6 +127,49 @@ public partial class App : Application
             Shutdown(result.ok ? 0 : 1);
             return;
         }
+        if (e.Args.Length > 0 && e.Args[0] == "--recover")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var updates = new UpdateService(config, service);
+            var result = System.Threading.Tasks.Task.Run(async () =>
+            {
+                var pending = updates.History().Where(record => record.NeedsRecovery).ToList();
+                if (pending.Count == 0) return (ok: true, msg: "没有待恢复的维护任务。");
+                var messages = new List<string>();
+                foreach (var record in pending)
+                {
+                    var recovered = await updates.RecoverMaintenanceAsync(record);
+                    messages.Add((recovered.ok ? "已恢复 " : "恢复失败 ") + record.Label + "：" + recovered.msg);
+                }
+                return (ok: messages.All(line => line.StartsWith("已恢复")), msg: string.Join("\n", messages));
+            }).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "recover-result.txt"),
+                result.ok ? "完成：" + result.msg : "失败：" + result.msg);
+            Shutdown(result.ok ? 0 : 1);
+            return;
+        }
+        if (e.Args.Length > 1 && e.Args[0] == "--plugin-update")
+        {
+            var config = AppConfig.Load();
+            using var service = new DshService(config);
+            var updates = new UpdateService(config, service);
+            var profileName = e.Args.Length > 2 ? e.Args[2] : "web";
+            var result = System.Threading.Tasks.Task.Run(async () =>
+            {
+                var profile = updates.Profiles().FirstOrDefault(item => item.Name == profileName);
+                if (profile == null) return (ok: false, msg: "profile 不存在：" + profileName);
+                var plugin = profile.Plugins.FirstOrDefault(item => item.Name == e.Args[1] && !item.IsIndirect);
+                if (plugin == null) return (ok: false, msg: "插件不存在：" + e.Args[1]);
+                return await updates.UpdatePluginsAsync(new[] { plugin });  // 按当前声明解析目标（Git 浮动拉最新提交，npm 范围装范围内最高）
+            }).GetAwaiter().GetResult();
+            System.IO.Directory.CreateDirectory(AppConfig.ConfigDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppConfig.ConfigDir, "plugin-update-result.txt"),
+                result.ok ? "完成：" + result.msg : "失败：" + result.msg);
+            Shutdown(result.ok ? 0 : 1);
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--mcp-check")
         {
             var config = AppConfig.Load();
